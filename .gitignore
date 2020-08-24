@@ -44,3 +44,4 @@ CTestTestfile.cmake
 
 # by qm
 **/bin/media/**
+**/libs/**
