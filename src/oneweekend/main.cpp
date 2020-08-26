@@ -1,10 +1,6 @@
 // main func opencl raytracing in oneweekend
-
-#include <CL/cl.hpp>
-#include <fstream>
-#include <iostream>
-#include <sstream>
-#include <vector>
+#include <oneweekend/color.hpp>
+#include <oneweekend/external.hpp>
 
 const int image_width = 640;
 const int image_height = 480;
@@ -88,36 +84,6 @@ std::string read_file(const char *path) {
   return kernelSource;
 }
 
-inline float clamp(float x, float min, float max) {
-  bool xmin = x < min;
-  bool xmax = x > max;
-  if (xmin)
-    return min;
-  if (xmax)
-    return max;
-  return x;
-}
-
-inline int cast_color(float x) { return int(clamp(x, 0, 1) * 255); }
-
-void save_to_ppm(const char *ppm_path, int imwidth, int imheight,
-                 cl_float4 *cpu_out) {
-  std::ofstream ppm;
-  ppm.open(ppm_path);
-
-  ppm << "P3" << std::endl;
-  ppm << imwidth << " " << imheight << std::endl;
-  ppm << "255" << std::endl;
-  for (int i = 0; i < imwidth * imheight; i++) {
-    int ir = cast_color(cpu_out[i].s[0]);
-    int ig = cast_color(cpu_out[i].s[1]);
-    int ib = cast_color(cpu_out[i].s[2]);
-    ppm << ir << " " << ig << " " << ib << std::endl;
-  }
-
-  ppm.close();
-}
-
 void init_opencl(const char *kernel_path, const char *kernel_name) {
   std::vector<cl::Platform> platforms;
   cl::Platform::get(&platforms);
@@ -160,7 +126,7 @@ int main() {
   cpu_output = new cl_float3[image_width * image_height];
 
   //
-  init_opencl("kernels/oneweekend/gradient.cl", "ray_color");
+  init_opencl("kernels/oneweekend/oneweekend.cl", "ray_color");
 
   //
   cl_output = cl::Buffer(context, CL_MEM_WRITE_ONLY,
@@ -169,6 +135,7 @@ int main() {
   kernel.setArg(0, cl_output);
   kernel.setArg(1, image_width);
   kernel.setArg(2, image_height);
+  kernel.setArg(3, (float)image_width / (float)image_height);
 
   std::size_t global_work_size = image_height * image_width;
   /*
@@ -188,7 +155,8 @@ int main() {
                           image_width * image_height * sizeof(cl_float3),
                           cpu_output);
 
-  save_to_ppm("media/ppm/gradiento.ppm", image_width, image_height, cpu_output);
+  save_to_ppm("media/ppm/oneweekend.ppm", image_width, image_height,
+              cpu_output);
   std::cout << "rendering done" << std::endl;
 
   //
