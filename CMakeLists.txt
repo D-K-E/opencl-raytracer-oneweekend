@@ -38,11 +38,34 @@ add_executable(
     gradient.out
     #"src/glad.c"
     "src/gradient/gradient.cpp"
+    "src/sphere/utils.hpp"
+)
+add_executable(
+    sphere.out
+    #"src/glad.c"
+    "src/sphere/sphere.cpp"
+    "src/sphere/utils.hpp"
+)
+add_executable(
+    rtsphere.out
+    #"src/glad.c"
+    "src/sphere/rtsphere.cpp"
+    "src/sphere/utils.hpp"
 )
 
+add_executable(
+    oneweekend.out
+    "src/oneweekend/main.cpp"
+)
 
 target_link_libraries(hello.out ${ALL_LIBS})
 target_link_libraries(gradient.out ${ALL_LIBS})
+target_link_libraries(sphere.out ${ALL_LIBS})
+target_link_libraries(rtsphere.out ${ALL_LIBS})
+target_link_libraries(oneweekend.out ${ALL_LIBS})
 
 install(TARGETS hello.out DESTINATION "${PROJECT_SOURCE_DIR}/bin")
 install(TARGETS gradient.out DESTINATION "${PROJECT_SOURCE_DIR}/bin")
+install(TARGETS sphere.out DESTINATION "${PROJECT_SOURCE_DIR}/bin")
+install(TARGETS rtsphere.out DESTINATION "${PROJECT_SOURCE_DIR}/bin")
+install(TARGETS oneweekend.out DESTINATION "${PROJECT_SOURCE_DIR}/bin")
