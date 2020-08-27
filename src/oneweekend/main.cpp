@@ -1,6 +1,7 @@
 // main func opencl raytracing in oneweekend
 #include <oneweekend/color.hpp>
 #include <oneweekend/external.hpp>
+#include <oneweekend/sphere.hpp>
 
 const int image_width = 640;
 const int image_height = 480;
@@ -11,6 +12,7 @@ cl::Kernel kernel;
 cl::Context context;
 cl::Program program;
 cl::Buffer cl_output;
+cl::Buffer cl_sphere;
 cl::Device device;
 
 void pickPlatform(cl::Platform &platform,
@@ -122,6 +124,14 @@ void init_opencl(const char *kernel_path, const char *kernel_name) {
 
 void clean_up(cl_float4 *cpu_out) { delete cpu_out; }
 
+void make_scene(Sphere *spheres) {
+  spheres[0].radius = 0.5f;
+  spheres[0].center = {{0.0f, 0.0f, -1.0f}};
+
+  spheres[1].radius = 100.0f;
+  spheres[1].center = {{0.0f, 100.5f, -1.0f}};
+}
+
 int main() {
   cpu_output = new cl_float3[image_width * image_height];
 
@@ -132,10 +142,21 @@ int main() {
   cl_output = cl::Buffer(context, CL_MEM_WRITE_ONLY,
                          image_width * image_height * sizeof(cl_float3));
 
+  // make spheres
+  const int sphere_count = 2;
+  Sphere spheres[sphere_count];
+  make_scene(spheres);
+  cl_sphere =
+      cl::Buffer(context, CL_MEM_READ_ONLY, sizeof(Sphere) * sphere_count);
+  queue.enqueueWriteBuffer(cl_sphere, CL_TRUE, 0, sphere_count * sizeof(Sphere),
+                           spheres);
+
   kernel.setArg(0, cl_output);
-  kernel.setArg(1, image_width);
-  kernel.setArg(2, image_height);
-  kernel.setArg(3, (float)image_width / (float)image_height);
+  kernel.setArg(1, cl_sphere);
+  kernel.setArg(2, sphere_count);
+  kernel.setArg(3, image_width);
+  kernel.setArg(4, image_height);
+  kernel.setArg(5, (float)image_width / (float)image_height);
 
   std::size_t global_work_size = image_height * image_width;
   /*
