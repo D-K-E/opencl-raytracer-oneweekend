@@ -1,8 +1,12 @@
-// gradient kernel
+// oneweekend kernel
 
-// ------------------------ Ray ------------------
 __constant float EPS_TMIN = 0.001;
 __constant float INF = 1.0f / 0.0f;
+#define Vec3 float3
+#define Point3 float3
+#define Color float3
+
+// ------------------------ Ray ------------------
 
 typedef struct Ray{
     float3 origin;
@@ -21,6 +25,29 @@ float3 at(Ray r, float dist){
 }
 
 // -------------------- end Ray --------------------
+
+// -------------------- Camera ---------------------
+
+typedef struct Camera {
+  float3 origin;
+  float3 lower_left_corner;
+  float3 horizontal;
+  float3 vertical;
+} Camera;
+
+Ray get_ray(__constant Camera* cam, float u, float v) {
+  Ray r;
+  r.origin = cam->origin;
+  Vec3 corigin = cam->origin;
+  Vec3 ch = cam->horizontal;
+  Vec3 cv = cam->vertical;
+  Vec3 cll = cam->lower_left_corner;
+  Vec3 rdir = cll + u * ch + v * cv - corigin;
+  r.direction = rdir;
+  return r;
+}
+
+// ------------------ end Camera -------------------
 
 typedef struct HitRecord{
     float3 p; // hit point
@@ -117,6 +144,7 @@ float3 trace(const Ray* r,
 
 __kernel void ray_color(__global float3* out, 
                         __constant Sphere* spheres,
+                        __constant Camera* cam,
                         int sphere_count,
                         int imwidth,
                         int imheight,
@@ -126,22 +154,13 @@ __kernel void ray_color(__global float3* out,
     int xc = gid % imwidth;
     int yc = gid / imwidth;
 
+
     float fx = (float)xc / (float)imwidth;
     float fy = (float)yc / (float)imheight;
 
     // camera
 
-    float view_height = 2.0f;
-    float view_width = aspect_ratio * view_height;
-
-    float focal_length = 1.0f;
-
-    float3 cam_origin = (float3)(0.0f, 0.0f, 0.0f);
-    float3 horizontal = (float3)(view_width, 0.0f, 0.0f);
-    float3 vertical = (float3)(0.0f, view_height, 0.0f);
-    float3 lleft = cam_origin - horizontal / 2 - vertical / 2 - (float3)(0.0f,0.0f, focal_length);
-    float3 rdir = lleft + fx*horizontal + fy*vertical - cam_origin;
-    Ray cam_ray = makeRay(cam_origin, rdir);
+    Ray cam_ray = get_ray(cam, fx, fy);
     float3 rcolor = trace(&cam_ray, spheres, sphere_count);
 
     out[gid] = rcolor;
