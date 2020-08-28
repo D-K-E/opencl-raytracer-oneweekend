@@ -26,10 +26,28 @@ void make_camera(cl::Buffer &cl_camera, cl::Context &context,
   queue.enqueueWriteBuffer(cl_camera, CL_TRUE, 0, sizeof(Camera), &cam);
 }
 
+void make_sample_per_pixel_random(cl::Buffer &cl_sample_random,
+                                  cl::Context &context, cl::CommandQueue &queue,
+                                  const int samples_per_pixel,
+                                  const int image_size) {
+  const int random_size = samples_per_pixel * image_size * 2;
+  std::vector<cl_float> rands(random_size);
+  for (int i = 0; i < random_size; i++) {
+    //
+    rands[i] = random_float();
+  }
+  cl_sample_random =
+      cl::Buffer(context, CL_MEM_READ_ONLY, sizeof(cl_float) * random_size);
+  queue.enqueueWriteBuffer(cl_sample_random, CL_TRUE, 0,
+                           random_size * sizeof(cl_float), rands.data());
+}
+
 int main() {
   // --------------- Image Related ------------------
+  const float aspect_ratio = 16.0f / 9.0;
   const int image_width = 640;
-  const int image_height = 480;
+  const int image_height = static_cast<int>(image_width / aspect_ratio);
+  const int samples_per_pixel = 30;
 
   // --------------- OpenCL Related ------------------
   cl_float4 *cpu_output;
@@ -40,17 +58,20 @@ int main() {
   cl::Buffer cl_output;
   cl::Buffer cl_sphere;
   cl::Buffer cl_camera;
+  cl::Buffer cl_sample_random;
   cl::Device device;
 
   // -------------------------------------------------
 
-  cpu_output = new cl_float3[image_width * image_height];
-
+  // initialize opencl objects
   init_opencl("kernels/oneweekend/oneweekend.cl", "ray_color", device, queue,
               kernel, program, context);
 
-  cl_output = cl::Buffer(context, CL_MEM_WRITE_ONLY,
-                         image_width * image_height * sizeof(cl_float3));
+  // create output buffer
+  const int output_size = image_width * image_height;
+  cpu_output = new cl_float3[output_size];
+  cl_output =
+      cl::Buffer(context, CL_MEM_WRITE_ONLY, output_size * sizeof(cl_float3));
 
   // make spheres
   const int sphere_count = 2;
@@ -60,15 +81,24 @@ int main() {
   // make camera
   make_camera(cl_camera, context, queue);
 
+  // make sample random
+  make_sample_per_pixel_random(cl_sample_random, context, queue,
+                               samples_per_pixel, output_size);
+
   kernel.setArg(0, cl_output);
   kernel.setArg(1, cl_sphere);
   kernel.setArg(2, cl_camera);
-  kernel.setArg(3, sphere_count);
-  kernel.setArg(4, image_width);
-  kernel.setArg(5, image_height);
-  kernel.setArg(6, (float)image_width / (float)image_height);
+  kernel.setArg(3, cl_sample_random);
+  kernel.setArg(4, sphere_count);
+  kernel.setArg(5, image_width);
+  kernel.setArg(6, image_height);
+  kernel.setArg(7, samples_per_pixel);
+  kernel.setArg(8, aspect_ratio);
 
-  launch_kernel(kernel, image_height * image_width, device, queue);
+  const int global_size = image_height * image_width;
+  const int local_size = 32;
+
+  launch_kernel(kernel, global_size, local_size, queue);
 
   queue.enqueueReadBuffer(cl_output, CL_TRUE, 0,
                           image_width * image_height * sizeof(cl_float3),

@@ -1,15 +1,14 @@
 #ifndef UTILS_HPP
 #define UTILS_HPP
+#include <oneweekend/external.hpp>
 
-#include <random>
-
-inline float random_float() {
-  static std::uniform_real_distribution<float> dist(0.0f, 1.0f);
+inline cl_float random_float() {
+  static std::uniform_real_distribution<cl_float> dist(0.0f, 1.0f);
   static std::mt19937 gen;
   return dist(gen);
 }
 
-inline float random_float(float min, float max) {
+inline cl_float random_float(cl_float min, cl_float max) {
   return min + (max - min) * random_float();
 }
 
@@ -122,19 +121,9 @@ void init_opencl(const char *kernel_path, const char *kernel_name,
   }
   kernel = cl::Kernel(program, kernel_name);
 }
-void launch_kernel(cl::Kernel &kernel, 
-        int global_size, int local_size,
-        cl::Device device,
-                   cl::CommandQueue queue) {
+void launch_kernel(cl::Kernel &kernel, const int global_size,
+                   const int local_size, cl::CommandQueue queue) {
   std::size_t global_work_size = global_size;
-  /*
-  std::size_t local_work_size =
-      kernel.getWorkGroupInfo<CL_KERNEL_WORK_GROUP_SIZE>(device);
-  if (global_work_size % local_work_size != 0) {
-    global_work_size =
-        (global_work_size / local_work_size + 1) * local_work_size;
-  }
-  */
   std::size_t local_work_size = local_size;
   queue.enqueueNDRangeKernel(kernel, NULL, global_work_size, local_work_size);
   queue.finish();

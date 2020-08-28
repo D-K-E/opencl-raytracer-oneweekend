@@ -29,22 +29,22 @@ float3 at(Ray r, float dist){
 // -------------------- Camera ---------------------
 
 typedef struct Camera {
-  float3 origin;
-  float3 lower_left_corner;
-  float3 horizontal;
-  float3 vertical;
+    float3 origin;
+    float3 lower_left_corner;
+    float3 horizontal;
+    float3 vertical;
 } Camera;
 
 Ray get_ray(__constant Camera* cam, float u, float v) {
-  Ray r;
-  r.origin = cam->origin;
-  Vec3 corigin = cam->origin;
-  Vec3 ch = cam->horizontal;
-  Vec3 cv = cam->vertical;
-  Vec3 cll = cam->lower_left_corner;
-  Vec3 rdir = cll + u * ch + v * cv - corigin;
-  r.direction = rdir;
-  return r;
+    Ray r;
+    r.origin = cam->origin;
+    Vec3 corigin = cam->origin;
+    Vec3 ch = cam->horizontal;
+    Vec3 cv = cam->vertical;
+    Vec3 cll = cam->lower_left_corner;
+    Vec3 rdir = cll + u * ch + v * cv - corigin;
+    r.direction = rdir;
+    return r;
 }
 
 // ------------------ end Camera -------------------
@@ -69,7 +69,7 @@ typedef struct Sphere{
 } Sphere;
 
 bool hit_sphere(const Sphere* s, const Ray* r, 
-                float t_min, float t_max, HitRecord* rec){
+        float t_min, float t_max, HitRecord* rec){
     float3 oc = r->origin - s->center;
     float a = dot(r->direction, r->direction);
     float hb = dot(oc, r->direction);
@@ -107,18 +107,18 @@ bool hit_sphere(const Sphere* s, const Ray* r,
 // ----------------- end Sphere -------------------
 
 bool hit_spheres(__constant Sphere* spheres,
-                 const Ray* r,
-                 float t_min,
-                 float t_max, 
-                 int sphere_count,
-                 HitRecord* rec){
+        const Ray* r,
+        float t_min,
+        float t_max, 
+        int sphere_count,
+        HitRecord* rec){
     HitRecord temp;
     bool anyHit = false;
     float closest = t_max;
     for (int i=0; i < sphere_count; i++){
         Sphere s = spheres[i];
         bool isHit = hit_sphere(&s, r, t_min, closest,
-                                &temp);
+                &temp);
         if(isHit){
             anyHit = true;
             closest = temp.t;
@@ -130,7 +130,7 @@ bool hit_spheres(__constant Sphere* spheres,
 
 
 float3 trace(const Ray* r,
-             __constant Sphere* spheres, int sphere_count){
+        __constant Sphere* spheres, int sphere_count){
     HitRecord rec;
     if (hit_spheres(spheres, r, EPS_TMIN, INF, sphere_count,&rec)){
         return 0.5f * (rec.normal + (float3)(1.0f, 1.0f, 1.0f));
@@ -143,25 +143,32 @@ float3 trace(const Ray* r,
 }
 
 __kernel void ray_color(__global float3* out, 
-                        __constant Sphere* spheres,
-                        __constant Camera* cam,
-                        int sphere_count,
-                        int imwidth,
-                        int imheight,
-                        float aspect_ratio
-                        ){
+        __constant Sphere* spheres,
+        __constant Camera* cam,
+        __constant float* random_arr,
+        int sphere_count,
+        int imwidth,
+        int imheight,
+        int samples_per_pixel,
+        float aspect_ratio
+        ){
     const int gid = get_global_id(0);
     int xc = gid % imwidth;
     int yc = gid / imwidth;
 
+    // take random value from random array
+    const int start_index = gid * samples_per_pixel * 2;
+    const int end_index = start_index + samples_per_pixel * 2;
+    Color rcolor = (float3)(0.0f, 0.0f, 0.0f);
+    for(int i = start_index; i < end_index; i+=2){
 
-    float fx = (float)xc / (float)imwidth;
-    float fy = (float)yc / (float)imheight;
+        float u = ((float)xc + random_arr[i]) / (float)imwidth;
+        float v = ((float)yc + random_arr[i+1]) / (float)imheight;
+        // camera
 
-    // camera
+        Ray cam_ray = get_ray(cam, u, v);
+        rcolor += trace(&cam_ray, spheres, sphere_count);
+    }
 
-    Ray cam_ray = get_ray(cam, fx, fy);
-    float3 rcolor = trace(&cam_ray, spheres, sphere_count);
-
-    out[gid] = rcolor;
+    out[gid] = rcolor/samples_per_pixel;
 }
