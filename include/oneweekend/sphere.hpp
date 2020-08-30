@@ -1,13 +1,15 @@
 #ifndef SPHERE_HPP
 #define SPHERE_HPP
 #include <oneweekend/external.hpp>
+#include <oneweekend/vec3.hpp>
 
 struct Sphere {
   cl_float radius;
-  cl_float dummy1;
-  cl_float dummy2;
-  cl_float dummy3;
   cl_float3 center;
+  Sphere(float rad, Vec3 cent) {
+    radius = rad;
+    center = cent.e;
+  }
 };
 
 #endif

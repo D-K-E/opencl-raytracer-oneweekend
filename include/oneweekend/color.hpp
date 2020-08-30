@@ -13,7 +13,7 @@ inline float clamp(float x, float min, float max) {
   return x;
 }
 
-inline int cast_color(float x) { return int(clamp(x, 0, 1) * 255); }
+inline int cast_color(float x) { return int(clamp(x, 0.0f, 0.999) * 256); }
 
 inline cl_int3 cast_color(cl_float4 incolor) {
   cl_int3 color = {{cast_color((float)incolor.s[0]),
