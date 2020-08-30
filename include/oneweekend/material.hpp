@@ -3,6 +3,7 @@
 
 #include <oneweekend/external.hpp>
 #include <oneweekend/ray.hpp>
+#include <oneweekend/utils.hpp>
 #include <oneweekend/vec3.hpp>
 
 enum MaterialType : cl_int {
@@ -13,23 +14,22 @@ enum MaterialType : cl_int {
 
 struct Lambertian {
   cl_float3 color;
+  Lambertian(Color c) { color = c.e; }
 };
-Lambertian makeLambertian(Color color) {
-  Lambertian lamb;
-  lamb.color = color.e;
-  return lamb;
-}
 
 struct Metal {
   cl_float3 color;
   cl_float fuzz;
+  Metal(Color c, float f) {
+    fuzz = f;
+    color = c.e;
+  }
 };
-Metal makeMetal(Color color, float fuzz) {
-  Metal met;
-  met.color = color.e;
-  met.fuzz = fuzz;
-  return met;
-}
+
+struct Dielectric {
+  cl_float ref_idx;
+  Dielectric(float ridx) { ref_idx = ridx; }
+};
 
 class SceneMaterial {
 public:
@@ -74,6 +74,18 @@ public:
     fuzz[index] = met.fuzz;
     color[index] = met.color;
   }
+  void addMaterial(Dielectric die) {
+    mat_type.push_back(DIELECTRIC);
+    fuzz.push_back(die.ref_idx);
+    color.push_back(Vec3(0.0f).e);
+    size++;
+  }
+  void addMaterial(Dielectric die, const int index) {
+    mat_type[index] = DIELECTRIC;
+    fuzz[index] = die.ref_idx;
+    color[index] = Vec3(0.0f).e;
+  }
+
   void to_buffer(cl::Context &context,
                  cl::CommandQueue &queue) {
     std::cout << "material size: " << size << std::endl;
