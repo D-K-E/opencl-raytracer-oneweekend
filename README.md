@@ -94,3 +94,8 @@ Once you run the `oneweekend.out` it should produce and image under
 
 - Kernel arguments. As the lightening calculations become more complex, it
   becomes difficult to track the order of arguments of the kernel.
+
+- Diffuse lambertian reflection in the image seems a bit off and it changes
+  quite a bit as I change random function in its scattering function. Not sure
+  why.
+
