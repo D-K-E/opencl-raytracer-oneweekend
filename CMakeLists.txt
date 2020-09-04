@@ -49,15 +49,22 @@ add_executable(
     oneweekend.out
     "src/oneweekend/main.cpp"
 )
+add_executable(
+    nextweek.out
+    "src/nextweek/nextweek.cpp"
+)
+
 
 target_link_libraries(hello.out ${ALL_LIBS})
 target_link_libraries(gradient.out ${ALL_LIBS})
 target_link_libraries(sphere.out ${ALL_LIBS})
 target_link_libraries(rtsphere.out ${ALL_LIBS})
 target_link_libraries(oneweekend.out ${ALL_LIBS})
+target_link_libraries(nextweek.out ${ALL_LIBS})
 
 install(TARGETS hello.out DESTINATION "${PROJECT_SOURCE_DIR}/bin")
 install(TARGETS gradient.out DESTINATION "${PROJECT_SOURCE_DIR}/bin")
 install(TARGETS sphere.out DESTINATION "${PROJECT_SOURCE_DIR}/bin")
 install(TARGETS rtsphere.out DESTINATION "${PROJECT_SOURCE_DIR}/bin")
 install(TARGETS oneweekend.out DESTINATION "${PROJECT_SOURCE_DIR}/bin")
+install(TARGETS nextweek.out DESTINATION "${PROJECT_SOURCE_DIR}/bin")
