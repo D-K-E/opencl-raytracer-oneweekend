@@ -67,11 +67,11 @@ Camera make_camera(float aspect_ratio) {
   return cam;
 }
 
-void make_sample_per_pixel_random(SceneRandom<cl_float> &sr,
-                                  cl::Context &context,
-                                  cl::CommandQueue &queue) {
+void make_sample_per_pixel_random(
+    SceneRandom<cl_float3> &sr, cl::Context &context,
+    cl::CommandQueue &queue) {
   for (int i = 0; i < sr.size; i++) {
-    sr.addRandom(RANDOM_FLOAT, random_float(), i);
+    sr.addRandom(random_in_unit_sphere().e, i);
   }
   sr.to_buffer(context, queue);
 }
@@ -102,12 +102,13 @@ void set_kernel_args(cl::Kernel &kernel, int &arg_count,
   kernel.setArg(arg_count, sh.size);
 }
 
-void set_kernel_args(cl::Kernel &kernel, int &arg_count,
-                     SceneRandom<cl_float> &sample_random) {
+void set_kernel_args(
+    cl::Kernel &kernel, int &arg_count,
+    SceneRandom<cl_float3> &sample_random) {
   arg_count++;
   kernel.setArg(arg_count, sample_random.cl_rand_vals);
-  arg_count++;
-  kernel.setArg(arg_count, sample_random.cl_rand_type);
+  // arg_count++;
+  // kernel.setArg(arg_count, sample_random.size);
 }
 
 void set_kernel_args(cl::Kernel &kernel, int &arg_count,
@@ -154,7 +155,7 @@ void set_kernel_args(cl::Kernel &kernel, int &arg_count,
 void set_kernel_arguments(
     cl::Kernel &kernel, cl::Buffer &cl_output,
     SceneHittables &sh, const int depth,
-    SceneRandom<cl_float> &sample_random,
+    SceneRandom<cl_float3> &sample_random,
     const int image_width, const int image_height,
     const int samples_per_pixel, const float aspect_ratio,
     Camera &cam) {
@@ -175,11 +176,11 @@ void set_kernel_arguments(
 int main() {
   // --------------- Image Related ------------------
   const float aspect_ratio = 16.0f / 9.0;
-  const int image_width = 800;
+  const int image_width = 640;
   const int image_height =
       static_cast<int>(image_width / aspect_ratio);
-  const int samples_per_pixel = 30;
-  const int depth = 10;
+  const int samples_per_pixel = 40;
+  const int depth = 20;
 
   // --------------- OpenCL Related ------------------
   cl_float4 *cpu_output;
@@ -212,8 +213,8 @@ int main() {
 
   // make sample random
   const int sample_size = samples_per_pixel * output_size;
-  const int rand_size = sample_size * 2 * depth;
-  SceneRandom<cl_float> sample_random(rand_size);
+  const int rand_size = sample_size * depth;
+  SceneRandom<cl_float3> sample_random(rand_size);
   make_sample_per_pixel_random(sample_random, context,
                                queue);
 

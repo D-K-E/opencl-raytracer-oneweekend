@@ -25,6 +25,12 @@ inline cl_float random_float() {
   return dist(gen);
 }
 
+inline cl_int random_int(int max) {
+  static std::uniform_int_distribution<int> dist(0, max);
+  static std::mt19937 gen;
+  return dist(gen);
+}
+
 inline cl_float random_float(cl_float min, cl_float max) {
   return min + (max - min) * random_float();
 }

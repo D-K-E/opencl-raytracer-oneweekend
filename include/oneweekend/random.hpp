@@ -23,38 +23,29 @@ Vec3 random_in_unit_sphere() {
 }
 
 enum RandomType : cl_int {
-  RANDOM_FLOAT = 1,
-  RANDOM_UNIT_VEC = 2,
-  RANDOM_UNIT_SPHERE = 3,
-  RANDOM_UNIT_HEMISPHERE = 4,
-  RANDOM_UNIT_DISK = 5,
-  RANDOM_COSINE_DIRECTION = 6,
-  RANDOM_TO_SPHERE = 7,
+  RANDOM_INT = 1,
+  RANDOM_FLOAT = 2,
+  RANDOM_UINT = 3,
+  RANDOM_UINT3 = 4
 };
 
 template <class T> class SceneRandom {
 public:
   std::vector<T> rand_vals;
-  std::vector<cl_int> rand_type;
   int size;
   cl::Buffer cl_rand_vals;
-  cl::Buffer cl_rand_type;
 
 public:
   SceneRandom() : size(0) {}
   SceneRandom(const int obj_size) : size(obj_size) {
-    std::vector<cl_int> types(size);
     std::vector<T> rvals(size);
     rand_vals = rvals;
-    rand_type = types;
   }
-  void addRandom(RandomType rtype, T val) {
+  void addRandom(T val) {
     size++;
-    rand_type.push_back(rtype);
     rand_vals.push_back(val);
   }
-  void addRandom(RandomType rtype, T val, const int index) {
-    rand_type[index] = rtype;
+  void addRandom(T val, const int index) {
     rand_vals[index] = val;
   }
   void to_buffer(cl::Context &context,
@@ -62,8 +53,6 @@ public:
     std::cout << "random size: " << size << std::endl;
     make_buffer<T>(cl_rand_vals, context, queue, size,
                    rand_vals.data());
-    make_buffer<cl_int>(cl_rand_type, context, queue, size,
-                        rand_type.data());
   }
 };
 

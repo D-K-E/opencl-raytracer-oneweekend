@@ -84,10 +84,15 @@ Once you run the `oneweekend.out` it should produce and image under
 
 ## Areas of Improvement
 
-- Random handling. I am using [Intel's
-  implementation](https://software.intel.com/content/www/us/en/develop/articles/parallel-noise-and-random-functions-for-opencl-kernels.html)
-  of `Noise_2D` and send seeds from host. This seems to work fine for small
-  images but I am not sure if it is a scalable approach for larger images.
+- Random handling. I am generating `random_in_unit_sphere` in cpu. Then
+  interpolate its values according to need inside the kernel.  This seems to
+  work fine for small images but I am not sure if it is a scalable approach
+  for larger images.
+
+- Black Screen. Occasionally for bigger images like 800x540, I get a black
+  screen. This probably means I am having precision problems due to use of
+  float instead of double. The multiplication inside the `ray_color` must be
+  hard on precision. I might dampen its effect somehow later.
 
 - Object handling. Aggregative structures such as `SceneHittable` requires
   padding of empty attributes which is not ressource friendly.
