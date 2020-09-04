@@ -12,43 +12,35 @@ set(CMAKE_CXX_COMPILER "clang++")
 set(CMAKE_CXX_FLAGS "-lstdc++ -ldl -ggdb -Wall -Wextra -pedantic -Wextra-tokens -std=c++11")
 
 
-#find_package(OpenGL REQUIRED)
 find_package(OpenCL REQUIRED)
 
 
 set ( ALL_LIBS
-    #${GLFW_SHARED_LIB}
-    #${ASSIMP_SHARED_LIB}
     ${OpenCL_LIBRARY}
 )
 
 include_directories(
     "./include/"
     ${OpenCL_INCLUDE_DIR}
-    #${OpenGL_INCLUDE_DIR}
 )
 link_directories(${OpenCL_LIBRARY})
 
 add_executable(
     hello.out
-    #"src/glad.c"
     "src/hello/hello.cpp"
 )
 add_executable(
     gradient.out
-    #"src/glad.c"
     "src/gradient/gradient.cpp"
     "src/sphere/utils.hpp"
 )
 add_executable(
     sphere.out
-    #"src/glad.c"
     "src/sphere/sphere.cpp"
     "src/sphere/utils.hpp"
 )
 add_executable(
     rtsphere.out
-    #"src/glad.c"
     "src/sphere/rtsphere.cpp"
     "src/sphere/utils.hpp"
 )
