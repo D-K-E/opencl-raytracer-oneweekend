@@ -10,29 +10,61 @@
 
 void make_scene(SceneHittables &sh, cl::Context &context,
                 cl::CommandQueue &queue) {
-  sh.addObject(Sphere(0.5f, Vec3(0.0f, 0.0f, -1.0f)), 0);
-  sh.addObject(Sphere(100.0f, Vec3(0.0f, 100.5f, -1.0f)),
-               1);
-  sh.addObject(Sphere(0.5f, Vec3(-1.0f, 0.0f, -1.0f)), 2);
-  sh.addObject(Sphere(0.4f, Vec3(-1.0f, 0.0f, -1.0f)), 3);
-  sh.addObject(Sphere(0.5f, Vec3(1.0f, 0.0f, -1.0f)), 4);
+  // ground material
+  sh.addObject(Sphere(1000.0f, Vec3(0, -1000.0f, 0)),
+               LAMBERTIAN, Vec3(0.5f), 0.0f);
+
+  for (int a = -11; a < 11; a++) {
+    for (int b = -11; b < 11; b++) {
+      float choose_mat = random_float();
+      Point3 center(a + 0.9f * random_float(), 0.2f,
+                    b + 0.9f * random_float());
+      if ((center - Vec3(4.0f, 0.2f, 0.0f)).length() >
+          0.9f) {
+        if (choose_mat < 0.8f) {
+          // diffuse material
+          Color albedo = random_vec() * random_vec();
+          sh.addObject(Sphere(0.2f, center), LAMBERTIAN,
+                       albedo, 0.0f);
+        } else if (choose_mat < 0.95f) {
+          Color albedo = random_vec(0.5f, 1.0f);
+          float fuzz = random_float(0.0f, 0.5f);
+          sh.addObject(Sphere(0.2f, center), METAL, albedo,
+                       fuzz);
+        } else {
+          sh.addObject(Sphere(0.2f, center), DIELECTRIC,
+                       Color(0.0f), 1.5f);
+        }
+      }
+    }
+  }
+  sh.addObject(Sphere(1.0f, Point3(0.0f, 1.0f, 0.0f)),
+               DIELECTRIC, Color(0.0f), 1.5f);
+
+  //
+  sh.addObject(Sphere(1.0f, Point3(-4.0f, 1.0f, 0.0f)),
+               LAMBERTIAN, Color(0.4f, 0.2f, 0.1f), 0.0f);
+
+  //
+  sh.addObject(Sphere(1.0f, Point3(4.0f, 1.0f, 0.0f)),
+               METAL, Color(0.7f, 0.6f, 0.5f), 0.0f);
+  //
   sh.to_buffer(context, queue);
 }
-void make_material(SceneMaterial &sm, cl::Context &context,
-                   cl::CommandQueue &queue) {
-  sm.addMaterial(Lambertian(Vec3(0.7f, 0.3f, 0.3f)), 0);
-  sm.addMaterial(Lambertian(Vec3(0.8f, 0.8f, 0.0f)), 1);
-  sm.addMaterial(Dielectric(1.5f), 2);
-  sm.addMaterial(Dielectric(1.5f), 3);
-  sm.addMaterial(Metal(Vec3(0.8f, 0.6f, 0.2f), 0.3f), 4);
-  sm.to_buffer(context, queue);
-}
 
-void make_camera(cl::Buffer &cl_camera,
-                 cl::Context &context,
-                 cl::CommandQueue &queue) {
-  Camera cam = makeCamera();
-  make_buffer<Camera>(cl_camera, context, queue, 1, &cam);
+Camera make_camera(float aspect_ratio) {
+  Point3 orig(13.0f, 2.0f, 3.0f);
+  Point3 target(0.0f);
+  Vec3 wup(0.0f, 1.0f, 0.0f);
+  float vfov = 20.0f;
+  float focus_dist = 10.0f;
+  float aperature = 0.1f;
+  float t0 = 0.0f;
+  float t1 = 1.0f;
+  Camera cam(orig, target, wup, vfov, aspect_ratio,
+             aperature, focus_dist, t0, t1);
+  // Camera cam(vfov, aspect_ratio);
+  return cam;
 }
 
 void make_sample_per_pixel_random(SceneRandom<cl_float> &sr,
@@ -43,49 +75,107 @@ void make_sample_per_pixel_random(SceneRandom<cl_float> &sr,
   }
   sr.to_buffer(context, queue);
 }
+// void setArgs(cl::Kernel);
 
-void make_depth_random(SceneRandom<cl_float3> &sr,
-                       cl::Context &context,
-                       cl::CommandQueue &queue) {
-  for (int i = 0; i < sr.size; i++) {
-    //
-    sr.addRandom(RANDOM_UNIT_SPHERE,
-                 random_in_unit_sphere().e, i);
-  }
-  sr.to_buffer(context, queue);
+void set_kernel_args(cl::Kernel &kernel, int &arg_count,
+                     SceneMaterial *sm) {
+  arg_count++;
+  kernel.setArg(arg_count, sm->cl_mat_type);
+  arg_count++;
+  kernel.setArg(arg_count, sm->cl_color);
+  arg_count++;
+  kernel.setArg(arg_count, sm->cl_fuzz);
+}
+void set_kernel_args(cl::Kernel &kernel, int &arg_count,
+                     SceneHittables &sh) {
+  arg_count++;
+  kernel.setArg(arg_count, sh.cl_hittable_type);
+  arg_count++;
+  kernel.setArg(arg_count, sh.cl_center);
+  // arg_count++;
+  // kernel.setArg(arg_count, sh.cl_center2);
+  // arg_count++;
+  // kernel.setArg(arg_count, sh.cl_times);
+  arg_count++;
+  kernel.setArg(arg_count, sh.cl_radius);
+  arg_count++;
+  kernel.setArg(arg_count, sh.size);
+}
+
+void set_kernel_args(cl::Kernel &kernel, int &arg_count,
+                     SceneRandom<cl_float> &sample_random) {
+  arg_count++;
+  kernel.setArg(arg_count, sample_random.cl_rand_vals);
+  arg_count++;
+  kernel.setArg(arg_count, sample_random.cl_rand_type);
+}
+
+void set_kernel_args(cl::Kernel &kernel, int &arg_count,
+                     Camera &cam) {
+  arg_count++;
+  kernel.setArg(arg_count, cam.origin);
+  arg_count++;
+  kernel.setArg(arg_count, cam.lower_left_corner);
+  arg_count++;
+  kernel.setArg(arg_count, cam.horizontal);
+  arg_count++;
+  kernel.setArg(arg_count, cam.vertical);
+  arg_count++;
+  kernel.setArg(arg_count, cam.w);
+  arg_count++;
+  kernel.setArg(arg_count, cam.u);
+  arg_count++;
+  kernel.setArg(arg_count, cam.v);
+  arg_count++;
+  kernel.setArg(arg_count, cam.lens_radius);
+  // arg_count++;
+  // kernel.setArg(arg_count, cam.time0);
+  // arg_count++;
+  // kernel.setArg(arg_count, cam.time1);
+}
+
+void set_kernel_args(cl::Kernel &kernel, int &arg_count,
+                     int depth, int image_width,
+                     int image_height,
+                     int samples_per_pixel,
+                     float aspect_ratio) {
+  arg_count++;
+  kernel.setArg(arg_count, depth);
+  arg_count++;
+  kernel.setArg(arg_count, image_width);
+  arg_count++;
+  kernel.setArg(arg_count, image_height);
+  arg_count++;
+  kernel.setArg(arg_count, samples_per_pixel);
+  arg_count++;
+  kernel.setArg(arg_count, aspect_ratio);
 }
 
 void set_kernel_arguments(
     cl::Kernel &kernel, cl::Buffer &cl_output,
-    cl::Buffer &cl_camera, SceneMaterial &sm,
     SceneHittables &sh, const int depth,
     SceneRandom<cl_float> &sample_random,
-    SceneRandom<cl_float3> &depth_random,
     const int image_width, const int image_height,
-    const int samples_per_pixel, const float aspect_ratio) {
-  kernel.setArg(0, cl_output);
-  kernel.setArg(1, sh.cl_center);
-  kernel.setArg(2, sh.cl_radius);
-  kernel.setArg(3, cl_camera);
-  kernel.setArg(4, sample_random.cl_rand_vals);
-  kernel.setArg(5, sample_random.cl_rand_type);
-  kernel.setArg(6, depth_random.cl_rand_vals);
-  kernel.setArg(7, depth_random.cl_rand_type);
-  kernel.setArg(8, sm.cl_mat_type);
-  kernel.setArg(9, sm.cl_color);
-  kernel.setArg(10, sm.cl_fuzz);
-  kernel.setArg(11, sh.size);
-  kernel.setArg(12, depth);
-  kernel.setArg(13, image_width);
-  kernel.setArg(14, image_height);
-  kernel.setArg(15, samples_per_pixel);
-  kernel.setArg(16, aspect_ratio);
+    const int samples_per_pixel, const float aspect_ratio,
+    Camera &cam) {
+  int arg_count = 0;
+  kernel.setArg(arg_count, cl_output);
+  //
+  set_kernel_args(kernel, arg_count, sh);
+  //
+  set_kernel_args(kernel, arg_count, sample_random);
+  //
+  set_kernel_args(kernel, arg_count, sh.mat_ptr);
+  set_kernel_args(kernel, arg_count, cam);
+  set_kernel_args(kernel, arg_count, depth, image_width,
+                  image_height, samples_per_pixel,
+                  aspect_ratio);
 }
 
 int main() {
   // --------------- Image Related ------------------
   const float aspect_ratio = 16.0f / 9.0;
-  const int image_width = 320;
+  const int image_width = 800;
   const int image_height =
       static_cast<int>(image_width / aspect_ratio);
   const int samples_per_pixel = 30;
@@ -98,8 +188,6 @@ int main() {
   cl::Context context;
   cl::Program program;
   cl::Buffer cl_output;
-  cl::Buffer cl_sphere;
-  cl::Buffer cl_camera;
   cl::Device device;
 
   // -------------------------------------------------
@@ -116,35 +204,24 @@ int main() {
                          output_size * sizeof(cl_float3));
 
   // make spheres
-  const int sphere_count = 5;
-  SceneHittables sh(sphere_count);
+  SceneHittables sh;
   make_scene(sh, context, queue);
 
-  // make materials
-  const int material_count = sphere_count;
-  SceneMaterial sm(material_count);
-  make_material(sm, context, queue);
-
   // make camera
-  make_camera(cl_camera, context, queue);
+  Camera cam = make_camera(aspect_ratio);
 
   // make sample random
   const int sample_size = samples_per_pixel * output_size;
-  const int rand_size = sample_size * 2;
+  const int rand_size = sample_size * 2 * depth;
   SceneRandom<cl_float> sample_random(rand_size);
   make_sample_per_pixel_random(sample_random, context,
                                queue);
 
-  // make depth random
-  const int depth_rand_size = sample_size * depth;
-  SceneRandom<cl_float3> depth_random(depth_rand_size);
-  make_depth_random(depth_random, context, queue);
-
   // set kernel arguments
-  set_kernel_arguments(kernel, cl_output, cl_camera, sm, sh,
-                       depth, sample_random, depth_random,
-                       image_width, image_height,
-                       samples_per_pixel, aspect_ratio);
+  set_kernel_arguments(kernel, cl_output, sh, depth,
+                       sample_random, image_width,
+                       image_height, samples_per_pixel,
+                       aspect_ratio, cam);
 
   const int global_size = image_height * image_width;
   const int local_size = 10;

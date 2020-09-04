@@ -3,6 +3,7 @@
 __constant float EPS_TMIN = 0.001;
 __constant float INF = 1.0f / 0.0f;
 __constant float FMAX = 1e20;
+__constant float PI = 3.1415926535897f;
 #define Vec3 float3
 #define Point3 float3
 #define Color float3
@@ -21,6 +22,20 @@ float map_range(float value, float leftMin, float leftMax,
   // (float)
   float valueScaled =
       (float)(value - leftMin) / (float)(leftSpan);
+
+  // Convert the 0 - 1 range into a value in the right
+  // range.
+  return rightMin + (valueScaled * rightSpan);
+}
+
+Vec3 map_range_vec(Vec3 v, float leftMin, float leftMax,
+                   float rightMin, float rightMax) {
+  // Figure out how 'wide' each range is
+  float leftSpan = leftMax - leftMin;
+  float rightSpan = rightMax - rightMin;
+
+  // Convert the left range into a 0-1 range
+  Vec3 valueScaled = (v - leftMin) / (float)(leftSpan);
 
   // Convert the 0 - 1 range into a value in the right
   // range.
@@ -124,6 +139,7 @@ float hash_grad_dot2(uint hash, float2 xy) // 2d gradient
 
   return dot(xy, grad2);
 }
+#define interp(w, b, c) mix((b), (c), (w))
 
 float Noise_2d(float x, float y) {
   float X = floor(x); // lower grid coordinates
@@ -165,6 +181,58 @@ float Noise_2d(float x, float y) {
 
   return interp(wy, interp(wx, gxy, gXy),
                 interp(wx, gxY, gXY));
+}
+
+float random_float_minmax(float2 seed, float min,
+                          float max) {
+  return map_range(Noise_2d(seed.x, seed.y), -1.0f, 1.0f,
+                   min, max);
+}
+
+float random_float(float2 seed) {
+
+  return random_float_minmax(seed, 0.0f, 1.0f);
+}
+
+Vec3 random_vec_minmax(float2 seed, float mn, float mx) {
+  return vec3(random_float_minmax(seed, mn, mx),
+              random_float_minmax(seed, mn, mx),
+              random_float_minmax(seed, mn, mx));
+}
+
+Vec3 random_vec(float2 seed) {
+  return random_vec_minmax(seed, 0.0f, 1.0f);
+}
+Vec3 random_unit_vector(float2 seed) {
+  float a = random_float_minmax(seed, 0, 2 * PI);
+  float z = random_float_minmax(seed, -1, 1);
+  float r = sqrt(1 - z * z);
+  return vec3(r * cos(a), r * sin(a), z);
+}
+Vec3 random_in_unit_sphere(float2 seed) {
+  while (true) {
+    Vec3 p = random_vec_minmax(seed, -1.0f, 1.0f);
+    if (dot(p, p) < 1.0f) {
+      return p;
+    }
+  }
+}
+Vec3 random_in_unit_disk(float2 seed) {
+  while (true) {
+    Vec3 p = random_vec_minmax(seed, -1.0f, 1.0f);
+    p.z = 0.0f;
+    if (dot(p, p) < 1.0f) {
+      return p;
+    }
+  }
+}
+Vec3 random_in_hemisphere(float2 seed, Vec3 normal) {
+  Vec3 in_unit_sphere = random_in_unit_sphere(seed);
+  if (dot(in_unit_sphere, normal) > 0.0) {
+    return in_unit_sphere;
+  } else {
+    return -in_unit_sphere;
+  }
 }
 
 // utilities function
@@ -214,18 +282,32 @@ typedef struct Camera {
   Vec3 lower_left_corner;
   float3 horizontal;
   float3 vertical;
+  float3 w, v, u;
+  float lens_radius;
 } Camera;
 
-Ray get_ray(__constant Camera *cam, float u, float v) {
-  Ray r;
-  r.origin = cam->origin;
-  Vec3 corigin = cam->origin;
-  Vec3 ch = cam->horizontal;
-  Vec3 cv = cam->vertical;
-  Vec3 cll = cam->lower_left_corner;
-  Vec3 rdir = cll + u * ch + v * cv - corigin;
-  r.direction = rdir;
-  return r;
+Camera makeCamera(Vec3 origin, Vec3 lleft, Vec3 h,
+                  Vec3 vert, float lens_radius, Vec3 w,
+                  Vec3 u, Vec3 v) {
+  Camera cam;
+  cam.origin = origin;
+  cam.lower_left_corner = lleft;
+  cam.horizontal = h;
+  cam.vertical = vert;
+  cam.w = w;
+  cam.u = u;
+  cam.v = v;
+  cam.lens_radius = lens_radius;
+  return cam;
+}
+
+Ray get_ray(Camera cam, float s, float t, float2 seed) {
+  Vec3 rd = cam.lens_radius * random_in_unit_disk(seed);
+  Vec3 offset = cam.u * rd.x + cam.v * rd.y;
+  return makeRay(cam.origin + offset,
+                 cam.lower_left_corner +
+                     s * cam.horizontal + t * cam.vertical -
+                     cam.origin - offset);
 }
 
 // ------------------ end Camera -------------------
@@ -270,6 +352,22 @@ typedef struct Material {
   Dielectric die;
 } Material;
 
+Material makeMaterial(MaterialTypes mtype, Color c,
+                      float f) {
+  Material mat;
+  if (mtype == LAMBERTIAN) {
+    mat.m_type = LAMBERTIAN;
+    mat.lam = makeLambertian(c);
+  } else if (mtype == METAL) {
+    mat.m_type = METAL;
+    mat.met = makeMetal(c, f);
+  } else if (mtype == DIELECTRIC) {
+    mat.m_type = DIELECTRIC;
+    mat.die = makeDielectric(f);
+  }
+  return mat;
+}
+
 typedef struct HitRecord {
   Point3 p;    // hit point
   Vec3 normal; // hit point normal
@@ -279,15 +377,17 @@ typedef struct HitRecord {
 } HitRecord;
 
 void set_front_face(HitRecord *rec, const Ray *r,
-                    Vec3 normal) {
-  rec->front_face = dot(r->direction, normal) < 0.0f;
-  rec->normal = rec->front_face ? normal : -1.0f * normal;
+                    const Vec3 *normal) {
+  bool face = dot(r->direction, *normal) < 0.0f;
+  rec->front_face = face;
+  rec->normal =
+      rec->front_face ? *normal : -1.0f * (*normal);
 }
 
 bool scatter_lambert(Lambertian lamb, Ray r, HitRecord rec,
                      Color *attenuation, Ray *r_out,
-                     Vec3 rand_val) {
-  Vec3 target = rec.normal + rand_val;
+                     float2 seed) {
+  Vec3 target = random_in_hemisphere(seed, rec.normal);
   *r_out = makeRay(rec.p, target);
   *attenuation = lamb.color;
   return true;
@@ -295,19 +395,20 @@ bool scatter_lambert(Lambertian lamb, Ray r, HitRecord rec,
 
 bool scatter_metal(Metal met, Ray r, HitRecord rec,
                    Color *attenuation, Ray *r_out,
-                   Vec3 rand_val) {
+                   float2 seed) {
   Vec3 refdir = reflect(normalize(r.direction), rec.normal);
-  *r_out = makeRay(rec.p, refdir + met.fuzz * rand_val);
+  Vec3 rand_dir = random_in_unit_sphere(seed);
+  *r_out = makeRay(rec.p, refdir + met.fuzz * rand_dir);
   *attenuation = met.color;
   return (dot(r_out->direction, rec.normal) > 0.0f);
 }
 
 bool scatter_dielectric(Dielectric die, Ray r,
                         HitRecord rec, Color *attenuation,
-                        Ray *r_out, Vec3 rand_val) {
+                        Ray *r_out, float2 seed) {
   *attenuation = v3(1.0f);
-  float eeta =
-      rec.front_face ? (1.0f / die.ref_idx) : die.ref_idx;
+  float eeta = rec.front_face == true ? (1.0f / die.ref_idx)
+                                      : die.ref_idx;
   Vec3 udir = normalize(r.direction);
   float cos_theta = fmin(dot(-udir, rec.normal), 1.0f);
   float sin_theta = sqrt(1.0f - (cos_theta * cos_theta));
@@ -317,9 +418,8 @@ bool scatter_dielectric(Dielectric die, Ray r,
     return true;
   }
   float refl_prob = schlick(cos_theta, eeta);
-  float r_val =
-      map_range(rand_val.x, -1.0f, 1.0f, 0.0f, 1.0f);
-  if (1.0f < refl_prob) {
+  float r_val = random_float(seed);
+  if (r_val < refl_prob) {
     Vec3 refle = reflect(udir, rec.normal);
     *r_out = makeRay(rec.p, refle);
     return true;
@@ -331,7 +431,7 @@ bool scatter_dielectric(Dielectric die, Ray r,
 
 bool scatter_material(Material mat, Ray r, HitRecord rec,
                       Color *attenuation, Ray *r_out,
-                      Vec3 rand_val) {
+                      float2 rand_val) {
   if (mat.m_type == LAMBERTIAN) {
     return scatter_lambert(mat.lam, r, rec, attenuation,
                            r_out, rand_val);
@@ -358,6 +458,31 @@ Sphere makeSphere(float r, Vec3 c) {
   s.center = c;
   return s;
 }
+typedef struct MovingSphere {
+  float radius;
+  Point3 center;
+  Point3 center2;
+  float time0;
+  float time1;
+} MovingSphere;
+
+MovingSphere makeMSphere(Point3 cent1, Point3 cent2,
+                         float rad, float t0, float t1) {
+  MovingSphere s;
+  s.center = cent1;
+  s.center2 = cent2;
+  s.radius = rad;
+  s.time0 = t0;
+  s.time1 = t1;
+  return s;
+}
+
+// Vec3 get_moving_center(const MovingSphere *s, float time)
+// {
+//  return s->center +
+//         ((time - s->time0) / (s->time1 - s->time0)) *
+//             (s->center2 - s->center);
+//}
 
 bool hit_sphere(const Sphere *s, const Ray *r, float t_min,
                 float t_max, HitRecord *rec) {
@@ -367,41 +492,78 @@ bool hit_sphere(const Sphere *s, const Ray *r, float t_min,
   float b = 2.0f * hb;
   float c = dot(oc, oc) - (s->radius * s->radius);
   float disc = (hb * hb) - (a * c);
-  HitRecord temp;
 
   if (disc > 0.0f) {
     float root = sqrt(disc);
 
     float margin = (-hb - root) / a;
     if (margin < t_max && margin > t_min) {
-      temp.t = margin;
-      temp.p = at(*r, temp.t);
-      Vec3 normal = (temp.p - s->center) / s->radius;
-      set_front_face(&temp, r, normal);
-      *rec = temp;
+      rec->t = margin;
+      rec->p = at(*r, rec->t);
+      Vec3 normal = (rec->p - s->center) / s->radius;
+      set_front_face(rec, r, &normal);
       return true;
     }
 
     margin = (-hb + root) / a;
     if (margin < t_max && margin > t_min) {
-      temp.t = margin;
-      temp.p = at(*r, temp.t);
-      float3 normal = (temp.p - s->center) / s->radius;
-      set_front_face(&temp, r, normal);
-      *rec = temp;
+      rec->t = margin;
+      rec->p = at(*r, rec->t);
+      float3 normal = (rec->p - s->center) / s->radius;
+      set_front_face(rec, r, &normal);
       return true;
     }
   }
   return false;
 }
 
+// bool hit_moving_sphere(const MovingSphere *s, const Ray
+// *r,
+//                     float t_min, float t_max,
+//                     HitRecord *rec) {
+// Vec3 s_center = get_moving_center(s, r->time);
+// float3 oc = r->origin - s_center;
+// float a = dot(r->direction, r->direction);
+// float hb = dot(oc, r->direction);
+// float b = 2.0f * hb;
+// float c = dot(oc, oc) - (s->radius * s->radius);
+// float disc = (hb * hb) - (a * c);
+
+// if (disc > 0.0f) {
+//  float root = sqrt(disc);
+
+//  float margin = (-hb - root) / a;
+//  if (margin < t_max && margin > t_min) {
+//    rec->t = margin;
+//    rec->p = at(*r, rec->t);
+//    Vec3 normal = (rec->p - s_center) / s->radius;
+//    set_front_face(rec, r, &normal);
+//    return true;
+//  }
+
+//  margin = (-hb + root) / a;
+//  if (margin < t_max && margin > t_min) {
+//    rec->t = margin;
+//    rec->p = at(*r, rec->t);
+//    float3 normal = (rec->p - s_center) / s->radius;
+//    set_front_face(rec, r, &normal);
+//    return true;
+//  }
+//}
+// return false;
+//}
+
 // ----------------- end Sphere -------------------
 
-typedef enum HittableType { SPHERE = 1 } HittableType;
+typedef enum HittableType {
+  SPHERE = 1,
+  MOVING_SPHERE = 2
+} HittableType;
 
 typedef struct SceneHittable {
   HittableType h_type;
   Sphere sph;
+  MovingSphere msph;
   Material mat;
 } SceneHittable;
 
@@ -412,18 +574,23 @@ SceneHittable makeSphereHittable(Point3 c, float r,
   SceneHittable sh;
   sh.h_type = SPHERE;
   sh.sph = makeSphere(r, c);
-  Material mat;
-  if (material_type == LAMBERTIAN) {
-    mat.m_type = LAMBERTIAN;
-    mat.lam = makeLambertian(material_color);
-  } else if (material_type == METAL) {
-    mat.m_type = METAL;
-    mat.met = makeMetal(material_color, material_fuzz);
-  } else if (material_type == DIELECTRIC) {
-    mat.m_type = DIELECTRIC;
-    mat.die = makeDielectric(material_fuzz);
-  }
-  sh.mat = mat;
+  sh.mat = makeMaterial(material_type, material_color,
+                        material_fuzz);
+
+  return sh;
+}
+SceneHittable makeMovingSphereHittable(Point3 c1, Point3 c2,
+                                       float r, float t0,
+                                       float t1,
+                                       Color material_color,
+                                       float material_fuzz,
+                                       int material_type) {
+  SceneHittable sh;
+  sh.h_type = MOVING_SPHERE;
+  sh.msph = makeMSphere(c1, c2, r, t0, t1);
+
+  sh.mat = makeMaterial(material_type, material_color,
+                        material_fuzz);
   return sh;
 }
 
@@ -463,12 +630,13 @@ bool hit_scene(__constant Vec3 *centers,
   return anyHit;
 }
 
-Color trace(Ray *r, __constant float3 *centers,
+Color trace(Ray *r, __constant int *htypes,
+            __constant float3 *centers,
             __constant float *radiuss,
             __constant Vec3 *material_colors,
             __constant float *material_fuzzs,
             __constant int *material_types,
-            __constant Vec3 *random_vals, int start_index,
+            __constant float *random_vals, int start_index,
             int sphere_count, int depth) {
   int end_index = start_index + depth;
   Ray r_in = *r;
@@ -480,9 +648,10 @@ Color trace(Ray *r, __constant float3 *centers,
                   EPS_TMIN, INF, sphere_count, &rec)) {
       Color attenuation;
       Ray r_out;
+      float2 seed =
+          (float2)(random_vals[i], random_vals[i + 1]);
       if (scatter_material(rec.mat_ptr, r_in, rec,
-                           &attenuation, &r_out,
-                           random_vals[i])) {
+                           &attenuation, &r_out, seed)) {
         r_in = r_out;
         accumulated *= attenuation;
       } else {
@@ -505,19 +674,18 @@ void get_random_uv(float *ru, float *rv, int i,
   *rv = rand_arr[i + 1];
 }
 
-__kernel void
-ray_color(__global float3 *out, __constant float3 *centers,
-          __constant float *radiuss, __constant Camera *cam,
-          __constant float *sample_random_vals,
-          __constant int *sample_random_types,
-          __constant Vec3 *depth_random_vals,
-          __constant int *depth_random_types,
-          __constant int *material_types,
-          __constant Vec3 *material_colors,
-          __constant float *material_fuzzs,
-          int sphere_count, int depth, int imwidth,
-          int imheight, int samples_per_pixel,
-          float aspect_ratio) {
+__kernel void ray_color(
+    __global float3 *out, __constant int *htypes,
+    __constant float3 *centers, __constant float *radiuss,
+    int sphere_count, __constant float *seeds,
+    __constant int *seedtypes,
+    __constant int *material_types,
+    __constant Vec3 *material_colors,
+    __constant float *material_fuzzs, float3 origin,
+    float3 lower_left_corner, float3 horizontal,
+    float3 vertical, float3 w, float3 u, float3 v,
+    float lens_radius, int depth, int imwidth, int imheight,
+    int samples_per_pixel, float aspect_ratio) {
   const int gid = get_global_id(0);
   int xc = gid % imwidth;
   int yc = gid / imwidth;
@@ -529,17 +697,20 @@ ray_color(__global float3 *out, __constant float3 *centers,
   Color rcolor = v3(0.0f);
   for (int i = start_index; i < end_index; i += 2) {
     float ru, rv;
-    get_random_uv(&ru, &rv, i, sample_random_vals);
+    get_random_uv(&ru, &rv, i, seeds);
 
     float u = ((float)xc + ru) / (float)(imwidth - 1);
     float v = ((float)yc + rv) / (float)(imheight - 1);
     // camera
     int depth_start_index = (int)(i / 2);
+    Camera cam =
+        makeCamera(origin, lower_left_corner, horizontal,
+                   vertical, lens_radius, w, u, v);
 
-    Ray cam_ray = get_ray(cam, u, v);
-    rcolor += trace(&cam_ray, centers, radiuss,
+    Ray cam_ray = get_ray(cam, u, v, (float2)(ru, rv));
+    rcolor += trace(&cam_ray, htypes, centers, radiuss,
                     material_colors, material_fuzzs,
-                    material_types, depth_random_vals,
+                    material_types, seeds,
                     depth_start_index, sphere_count, depth);
   }
 

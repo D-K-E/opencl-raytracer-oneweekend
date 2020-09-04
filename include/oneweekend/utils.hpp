@@ -1,6 +1,12 @@
 #ifndef UTILS_HPP
 #define UTILS_HPP
 #include <oneweekend/external.hpp>
+
+const float PI = 3.1415926535897f;
+float degrees_to_radians(float degrees) {
+  return degrees * PI / 180.0;
+}
+
 template <typename T>
 void make_buffer(cl::Buffer &cl_buffer,
                  cl::Context &context,

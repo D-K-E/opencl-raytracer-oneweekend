@@ -16,7 +16,7 @@ Vec3 random_vec(float mn, float mx) {
 Vec3 random_in_unit_sphere() {
   while (true) {
     Vec3 p = random_vec(-1, 1);
-    if (p.length_squared() >= 1.0f) {
+    if (p.length_squared() < 1.0f) {
       return p;
     }
   }

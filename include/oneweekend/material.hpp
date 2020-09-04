@@ -85,6 +85,19 @@ public:
     fuzz[index] = die.ref_idx;
     color[index] = Vec3(0.0f).e;
   }
+  void addMaterial(MaterialType mtype, cl_float3 v,
+                   cl_float f) {
+    mat_type.push_back(mtype);
+    fuzz.push_back(f);
+    color.push_back(v);
+    size++;
+  }
+  void addMaterial(MaterialType mtype, cl_float3 v,
+                   cl_float f, const int index) {
+    mat_type[index] = mtype;
+    fuzz[index] = f;
+    color[index] = v;
+  }
 
   void to_buffer(cl::Context &context,
                  cl::CommandQueue &queue) {

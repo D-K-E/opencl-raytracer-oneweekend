@@ -2,6 +2,7 @@
 #define VEC3_HPP
 
 #include <oneweekend/external.hpp>
+#include <oneweekend/utils.hpp>
 
 class Vec3 {
 public:
