@@ -16,16 +16,22 @@ void make_scene(SceneHittables &sh, cl::Context &context,
 
   for (int a = -11; a < 11; a++) {
     for (int b = -11; b < 11; b++) {
+      //
       float choose_mat = random_float();
       Point3 center(a + 0.9f * random_float(), 0.2f,
                     b + 0.9f * random_float());
+      //
       if ((center - Vec3(4.0f, 0.2f, 0.0f)).length() >
           0.9f) {
         if (choose_mat < 0.8f) {
           // diffuse material
           Color albedo = random_vec() * random_vec();
-          sh.addObject(Sphere(0.2f, center), LAMBERTIAN,
-                       albedo, 0.0f);
+          Point3 center2 =
+              center +
+              Vec3(0.0f, random_float(0, 0.5), 0.0f);
+          MovingSphere s = MovingSphere(
+              0.2f, center, center2, 0.0f, 1.0f);
+          sh.addObject(s, LAMBERTIAN, albedo, 0.0f);
         } else if (choose_mat < 0.95f) {
           Color albedo = random_vec(0.5f, 1.0f);
           float fuzz = random_float(0.0f, 0.5f);
@@ -174,7 +180,7 @@ void set_kernel_arguments(
 int main() {
   // --------------- Image Related ------------------
   const float aspect_ratio = 16.0f / 9.0;
-  const int image_width = 320;
+  const int image_width = 420;
   const int image_height =
       static_cast<int>(image_width / aspect_ratio);
   const int samples_per_pixel = 20;

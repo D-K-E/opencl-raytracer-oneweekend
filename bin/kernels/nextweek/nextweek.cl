@@ -332,6 +332,67 @@ bool hit_sphere(const Sphere *s, const Ray *r, float t_min,
   return false;
 }
 
+typedef struct MovingSphere {
+  float radius;
+  Point3 center1;
+  Point3 center2;
+  float time0;
+  float time1;
+} MovingSphere;
+
+MovingSphere makeMovingSphere(float r, Point3 c1, Point3 c2,
+                              float t0, float t1) {
+  MovingSphere s;
+  s.radius = r;
+  s.center1 = c1;
+  s.center2 = c2;
+  s.time0 = t0;
+  s.time1 = t1;
+  return s;
+}
+
+Point3 get_center_ms(MovingSphere *s, float time) {
+  Vec3 center =
+      ((time - s->time0) / (s->time1 - s->time0)) *
+      (s->center2 - s->center1);
+  return s->center1 + center;
+}
+
+bool hit_moving_sphere(const MovingSphere *s, const Ray *r,
+                       float t_min, float t_max,
+                       HitRecord *rec) {
+  Vec3 center = get_center_ms(s, r->time);
+  float3 oc = r->origin - center;
+  float a = dot(r->direction, r->direction);
+  float hb = dot(oc, r->direction);
+  float b = 2.0f * hb;
+  float c = dot(oc, oc) - (s->radius * s->radius);
+  float disc = (hb * hb) - (a * c);
+
+  if (disc > 0.0f) {
+    float root = sqrt(disc);
+
+    float margin = (-hb - root) / a;
+    if (margin < t_max && margin > t_min) {
+      rec->t = margin;
+      rec->p = at(*r, rec->t);
+      Vec3 normal = (rec->p - center) / s->radius;
+      set_front_face(rec, r, &normal);
+      return true;
+    }
+
+    margin = (-hb + root) / a;
+    if (margin < t_max && margin > t_min) {
+      rec->t = margin;
+      rec->p = at(*r, rec->t);
+      float3 normal = (rec->p - center) / s->radius;
+      set_front_face(rec, r, &normal);
+      return true;
+    }
+  }
+  return false;
+}
+
 // ----------------- end Sphere -------------------
 
 typedef enum HittableType {
@@ -342,6 +403,7 @@ typedef enum HittableType {
 typedef struct SceneHittable {
   HittableType h_type;
   Sphere sph;
+  MovingSphere msph;
   Material mat;
 } SceneHittable;
 
@@ -357,21 +419,55 @@ SceneHittable makeSphereHittable(Point3 c, float r,
 
   return sh;
 }
+SceneHittable makeMovingSphereHittable(Point3 c1, Point3 c2,
+                                       float r, float t0,
+                                       float t1,
+                                       Color material_color,
+                                       float material_fuzz,
+                                       int material_type) {
+  SceneHittable sh;
+  sh.h_type = MOVING_SPHERE;
+  sh.msph = makeMovingSphere(r, c1, c2, t0, t1);
+  sh.mat = makeMaterial(material_type, material_color,
+                        material_fuzz);
+
+  return sh;
+}
+SceneHittable makeSHittable(int hittable_type, Point3 c1,
+                            Point3 c2, float r, float t0,
+                            float t1, Color material_color,
+                            float material_fuzz,
+                            int material_type) {
+  if (hittable_type == MOVING_SPHERE) {
+    return makeMovingSphereHittable(
+        c1, c2, r, t0, t1, material_color, material_fuzz,
+        material_type);
+  } else {
+    return makeSphereHittable(c1, r, material_color,
+                              material_fuzz, material_type);
+  }
+}
 
 bool hit(SceneHittable h, const Ray *r, float t_min,
          float t_max, HitRecord *rec) {
+  bool isHit = false;
   if (h.h_type == SPHERE) {
-    bool isHit = hit_sphere(&h.sph, r, t_min, t_max, rec);
-    if (isHit) {
-      rec->mat_ptr = h.mat;
-    }
-    return isHit;
+    isHit = hit_sphere(&h.sph, r, t_min, t_max, rec);
+  } else {
+    isHit =
+        hit_moving_sphere(&h.msph, r, t_min, t_max, rec);
   }
-  return false;
+  if (isHit) {
+    rec->mat_ptr = h.mat;
+  }
+  return isHit;
 }
 
-bool hit_scene(__constant Vec3 *centers,
+bool hit_scene(__constant int *htypes,
+               __constant Vec3 *centers,
+               __constant Vec3 *centers2,
                __constant float *radiuss,
+               __constant float2 *times,
                __constant Vec3 *material_colors,
                __constant float *material_fuzzs,
                __constant int *material_types, const Ray *r,
@@ -381,11 +477,11 @@ bool hit_scene(__constant Vec3 *centers,
   bool anyHit = false;
   float closest = t_max;
   for (int i = 0; i < sphere_count; i++) {
-    SceneHittable h = makeSphereHittable(
-        centers[i], radiuss[i], material_colors[i],
+    SceneHittable h = makeSHittable(
+        htypes[i], centers[i], centers2[i], radiuss[i],
+        times[i].x, times[i].y, material_colors[i],
         material_fuzzs[i], material_types[i]);
-    bool isHit = hit(h, r, t_min, closest, &temp);
-    if (isHit) {
+    if (hit(h, r, t_min, closest, &temp)) {
       anyHit = true;
       closest = temp.t;
       *rec = temp;
@@ -394,22 +490,32 @@ bool hit_scene(__constant Vec3 *centers,
   return anyHit;
 }
 
-Color trace(Ray *r, __constant int *htypes,
+Color trace(Ray *r,
+            // ---------- hittables -------------------
+            __constant int *htypes,
             __constant float3 *centers,
+            __constant float3 *centers2,
             __constant float *radiuss,
+            __constant float2 *times,
+            // ---------- materials ------------------
             __constant Vec3 *material_colors,
             __constant float *material_fuzzs,
             __constant int *material_types,
-            __constant float3 *seeds, int start_index,
-            int sphere_count, int depth) {
+            // --------- random -----------------------
+            __constant float3 *seeds,
+            //
+            int start_index,  // ray start index for seeds
+            int sphere_count, //
+            int depth) {
   int end_index = start_index + depth;
   Ray r_in = *r;
   Color accumulated = v3(1.0f);
   for (int i = start_index; i < end_index; i++) {
     HitRecord rec;
-    if (hit_scene(centers, radiuss, material_colors,
-                  material_fuzzs, material_types, &r_in,
-                  EPS_TMIN, INF, sphere_count, &rec)) {
+    if (hit_scene(htypes, centers, centers2, radiuss, times,
+                  material_colors, material_fuzzs,
+                  material_types, &r_in, EPS_TMIN, INF,
+                  sphere_count, &rec)) {
       Color attenuation;
       Ray r_out;
       float3 seed = seeds[i];
@@ -493,10 +599,17 @@ ray_color(__global float3 *out,
         lens_radius, w, u, v, cam_t0, cam_t1);
 
     Ray cam_ray = get_ray(cam, u, v, seeds[i]);
-    rcolor += trace(&cam_ray, htypes, centers, radiuss,
-                    material_colors, material_fuzzs,
-                    material_types, seeds,
-                    depth_start_index, sphere_count, depth);
+    rcolor += trace(
+        &cam_ray,
+        // ---------- hittables -------------------
+        htypes, centers, centers2, radiuss, times,
+        // ---------- materials -------------------
+        material_colors, material_fuzzs, material_types,
+        // --------- randoms ----------------------
+        seeds,
+        // --------- others -----------------------
+        depth_start_index, // depth count
+        sphere_count, depth);
   }
 
   out[gid] = sqrt(rcolor / samples_per_pixel);
