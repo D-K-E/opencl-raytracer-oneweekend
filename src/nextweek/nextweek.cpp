@@ -180,7 +180,7 @@ void set_kernel_arguments(
 int main() {
   // --------------- Image Related ------------------
   const float aspect_ratio = 16.0f / 9.0;
-  const int image_width = 420;
+  const int image_width = 320;
   const int image_height =
       static_cast<int>(image_width / aspect_ratio);
   const int samples_per_pixel = 20;
@@ -198,8 +198,16 @@ int main() {
   // -------------------------------------------------
 
   // initialize opencl objects
-  init_opencl("kernels/nextweek/nextweek.cl", "ray_color",
-              device, queue, kernel, program, context);
+  init_opencl("kernels/nextweek/nextweek.cl", // kernel path
+              "ray_color", // kernel entry function
+              "../include/nextweek/kernels/", // include dir
+                                              // for kernel
+              device,                         // device
+              queue,                          // queue
+              kernel,  // kernel object
+              program, // program
+              context  // opencl context
+              );
 
   // create output buffer
   const int output_size = image_width * image_height;

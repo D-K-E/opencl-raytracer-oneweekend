@@ -118,6 +118,7 @@ std::string read_file(const char *path) {
 
 void init_opencl(const char *kernel_path,
                  const char *kernel_name,
+                 const char *include_dir,
                  cl::Device &device,
                  cl::CommandQueue &queue,
                  cl::Kernel &kernel, cl::Program &program,
@@ -152,7 +153,14 @@ void init_opencl(const char *kernel_path,
 
   queue = cl::CommandQueue(context, device);
   program = cl::Program(context, kernelSourceRaw.c_str());
-  cl_int result = program.build({device});
+  //
+  std::string include_flag = "-I ";
+
+  //
+  cl_int result = program.build(
+      {device}, (include_flag + include_dir).c_str());
+
+  //
   if (result == CL_BUILD_PROGRAM_FAILURE) {
     printError(program, device);
   }
