@@ -28,7 +28,7 @@ typedef struct Lambertian { Texture color; } Lambertian;
 
 Lambertian makeLambertianFromColor(Color c) {
   Lambertian l;
-  l.color = makeTexture(SOLID_COLOR, c, v3(0.0f));
+  l.color = makeTexture(SOLID_COLOR, c);
   return l;
 }
 Lambertian makeLambertianFromTexture(Texture t) {
@@ -44,7 +44,7 @@ typedef struct Metal {
 
 Metal makeMetalFromColor(Color c, float f) {
   Metal m;
-  m.color = makeTexture(SOLID_COLOR, c, v3(0.0f));
+  m.color = makeTexture(SOLID_COLOR, c);
   m.fuzz = f > 1.0f ? 1.0f : f;
   return m;
 }

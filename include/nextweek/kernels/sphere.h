@@ -18,7 +18,7 @@ typedef struct Sphere {
   Point3 center;
 } Sphere;
 
-Sphere makeSphere(float r, Vec3 c) {
+Sphere makeSphere(float r, Point3 c) {
   Sphere s;
   s.radius = r;
   s.center = c;

@@ -1,13 +1,13 @@
 // oneweekend kernel
-#include "constants.h"
-#include "macros.h"
-#include "ray.h"
-#include "kutils.h"
 #include "camera.h"
+#include "constants.h"
+#include "hittable.h"
+#include "kutils.h"
+#include "macros.h"
 #include "material.h"
+#include "ray.h"
 #include "scattering.h"
 #include "texture.h"
-#include "hittable.h"
 
 // utilities function
 
@@ -15,14 +15,16 @@
 Color trace(Ray *r,
             // ---------- hittables -------------------
             __constant int *htypes,
-            __constant float3 *centers,
-            __constant float3 *centers2,
+            __constant Point3 *centers,
+            __constant Point3 *centers2,
             __constant float *radiuss,
             __constant float2 *times,
             // ---------- materials ------------------
-            __constant Vec3 *material_colors,
             __constant float *material_fuzzs,
             __constant int *material_types,
+            // --------- texture ----------------------
+            __constant int *texture_types,
+            __constant Color *texture_colors,
             // --------- random -----------------------
             __constant float3 *seeds,
             //
@@ -34,10 +36,20 @@ Color trace(Ray *r,
   Color accumulated = v3(1.0f);
   for (int i = start_index; i < end_index; i++) {
     HitRecord rec;
-    if (hit_scene(htypes, centers, centers2, radiuss, times,
-                  material_colors, material_fuzzs,
-                  material_types, &r_in, EPS_TMIN, INF,
-                  sphere_count, &rec)) {
+    if (hit_scene(
+            // ----------- hittables -------------
+            htypes,   //
+            centers,  //
+            centers2, //
+            radiuss,  //
+            times,    //
+            // ----------- materials -------------
+            material_types, //
+            material_fuzzs, //
+            // ----------- textures --------------
+            texture_types,  //
+            texture_colors, //
+            &r_in, EPS_TMIN, INF, sphere_count, &rec)) {
       Color attenuation;
       Ray r_out;
       float3 seed = seeds[i];
@@ -69,20 +81,22 @@ void get_random_uv(float *ru, float *rv, float3 seed) {
 }
 
 __kernel void
-ray_color(__global float3 *out,
+ray_color(__global Color *out,
           // ---------- hittables -------------------
           __constant int *htypes,      //
-          __constant float3 *centers,  //
-          __constant float3 *centers2, //
+          __constant Point3 *centers,  //
+          __constant Point3 *centers2, //
           __constant float2 *times,    //
           __constant float *radiuss,   //
           int sphere_count,            //
           // --------- random -----------------------
-          __constant float3 *seeds, //
+          __constant Vec3 *seeds, //
           // --------- material ---------------------
           __constant int *material_types,   //
-          __constant Vec3 *material_colors, //
           __constant float *material_fuzzs, //
+          // --------- texture ----------------------
+          __constant int *texture_types,    //
+          __constant Color *texture_colors, //
           // --------- camera -----------------------
           float3 origin,                //
           float3 lower_left_corner,     //
@@ -121,17 +135,19 @@ ray_color(__global float3 *out,
         lens_radius, w, u, v, cam_t0, cam_t1);
 
     Ray cam_ray = get_ray(cam, u, v, seeds[i]);
-    rcolor += trace(
-        &cam_ray,
-        // ---------- hittables -------------------
-        htypes, centers, centers2, radiuss, times,
-        // ---------- materials -------------------
-        material_colors, material_fuzzs, material_types,
-        // --------- randoms ----------------------
-        seeds,
-        // --------- others -----------------------
-        depth_start_index, // depth count
-        sphere_count, depth);
+    rcolor +=
+        trace(&cam_ray,
+              // ---------- hittables -------------------
+              htypes, centers, centers2, radiuss, times,
+              // ---------- materials -------------------
+              material_fuzzs, material_types,
+              // ---------- textures --------------------
+              texture_types, texture_colors,
+              // --------- randoms ----------------------
+              seeds,
+              // --------- others -----------------------
+              depth_start_index, // depth count
+              sphere_count, depth);
   }
 
   out[gid] = sqrt(rcolor / samples_per_pixel);

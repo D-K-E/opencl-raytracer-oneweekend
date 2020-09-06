@@ -6,13 +6,14 @@
 #include <nextweek/material.hpp>
 #include <nextweek/random.hpp>
 #include <nextweek/sphere.hpp>
+#include <nextweek/texture.hpp>
 #include <nextweek/utils.hpp>
 
 void make_scene(SceneHittables &sh, cl::Context &context,
                 cl::CommandQueue &queue) {
   // ground material
   sh.addObject(Sphere(1000.0f, Vec3(0, -1000.0f, 0)),
-               LAMBERTIAN, Vec3(0.5f), 0.0f);
+               LAMBERTIAN, 0.0f, DOUBLE_COLOR, Vec3(0.2f));
 
   for (int a = -11; a < 11; a++) {
     for (int b = -11; b < 11; b++) {
@@ -31,29 +32,35 @@ void make_scene(SceneHittables &sh, cl::Context &context,
               Vec3(0.0f, random_float(0, 0.5), 0.0f);
           MovingSphere s = MovingSphere(
               0.2f, center, center2, 0.0f, 1.0f);
-          sh.addObject(s, LAMBERTIAN, albedo, 0.0f);
+          // Sphere s(0.2f, center2);
+          sh.addObject(s, LAMBERTIAN, 0.0f, SOLID_COLOR,
+                       albedo);
         } else if (choose_mat < 0.95f) {
           Color albedo = random_vec(0.5f, 1.0f);
           float fuzz = random_float(0.0f, 0.5f);
-          sh.addObject(Sphere(0.2f, center), METAL, albedo,
-                       fuzz);
+          Sphere s(0.2f, center);
+          sh.addObject(s, METAL, fuzz, SOLID_COLOR, albedo);
         } else {
-          sh.addObject(Sphere(0.2f, center), DIELECTRIC,
-                       Color(0.0f), 1.5f);
+          Sphere s(0.2f, center);
+          sh.addObject(s, DIELECTRIC, 1.5f, SOLID_COLOR,
+                       Color(0.0f));
         }
       }
     }
   }
-  sh.addObject(Sphere(1.0f, Point3(0.0f, 1.0f, 0.0f)),
-               DIELECTRIC, Color(0.0f), 1.5f);
+  Sphere s(1.0f, Point3(0.0f, 1.0f, 0.0f));
+  sh.addObject(s, DIELECTRIC, 1.5f, SOLID_COLOR,
+               Color(0.0f));
 
   //
-  sh.addObject(Sphere(1.0f, Point3(-4.0f, 1.0f, 0.0f)),
-               LAMBERTIAN, Color(0.4f, 0.2f, 0.1f), 0.0f);
+  Sphere s2(1.0f, Point3(-4.0f, 1.0f, 0.0f));
+  sh.addObject(s2, LAMBERTIAN, 0.0f, SOLID_COLOR,
+               Color(0.4f, 0.2f, 0.1f));
 
   //
-  sh.addObject(Sphere(1.0f, Point3(4.0f, 1.0f, 0.0f)),
-               METAL, Color(0.7f, 0.6f, 0.5f), 0.0f);
+  Sphere s3(1.0f, Point3(4.0f, 1.0f, 0.0f));
+  sh.addObject(s3, METAL, 0.0f, SOLID_COLOR,
+               Color(0.7f, 0.6f, 0.5f));
   //
   sh.to_buffer(context, queue);
 }
@@ -88,9 +95,14 @@ void set_kernel_args(cl::Kernel &kernel, int &arg_count,
   arg_count++;
   kernel.setArg(arg_count, sm->cl_mat_type);
   arg_count++;
-  kernel.setArg(arg_count, sm->cl_color);
-  arg_count++;
   kernel.setArg(arg_count, sm->cl_fuzz);
+}
+void set_kernel_args(cl::Kernel &kernel, int &arg_count,
+                     Texture *t_ptr) {
+  arg_count++;
+  kernel.setArg(arg_count, t_ptr->cl_texture_type);
+  arg_count++;
+  kernel.setArg(arg_count, t_ptr->cl_color);
 }
 void set_kernel_args(cl::Kernel &kernel, int &arg_count,
                      SceneHittables &sh) {
@@ -171,6 +183,8 @@ void set_kernel_arguments(
   set_kernel_args(kernel, arg_count, sample_random);
   //
   set_kernel_args(kernel, arg_count, sh.mat_ptr);
+  set_kernel_args(kernel, arg_count,
+                  sh.mat_ptr->texture_ptr);
   set_kernel_args(kernel, arg_count, cam);
   set_kernel_args(kernel, arg_count, depth, image_width,
                   image_height, samples_per_pixel,

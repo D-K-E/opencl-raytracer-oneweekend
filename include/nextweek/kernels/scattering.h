@@ -5,6 +5,7 @@
 #include "macros.h"
 #include "material.h"
 #include "ray.h"
+#include "texture.h"
 
 bool scatter_lambert(Lambertian lamb, Ray r, HitRecord rec,
                      Color *attenuation, Ray *r_out,

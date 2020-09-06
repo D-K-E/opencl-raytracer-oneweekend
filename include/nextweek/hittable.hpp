@@ -3,6 +3,7 @@
 #include <nextweek/external.hpp>
 #include <nextweek/material.hpp>
 #include <nextweek/sphere.hpp>
+#include <nextweek/texture.hpp>
 #include <nextweek/utils.hpp>
 
 enum HittableType : cl_int {
@@ -45,49 +46,52 @@ public:
   }
   void addObject(HittableType htype, Point3 centr1,
                  Point3 centr2, float rad, float t0,
-                 float t1, MaterialType mtype, Color c,
-                 float fuzz, const int index) {
+                 float t1, MaterialType mtype, float fuzz,
+                 TextureType ttype, Color c,
+                 const int index) {
     types[index] = htype;
     center[index] = centr1.e;
     center2[index] = centr2.e;
     radius[index] = rad;
     times[index] = {{t0, t1}};
 
-    mat_ptr->addMaterial(mtype, c.e, fuzz, index);
+    mat_ptr->addMaterial(mtype, fuzz, ttype, c, index);
   }
   void addObject(HittableType htype, Point3 centr1,
                  Point3 centr2, float rad, float t0,
-                 float t1, MaterialType mtype, Color c,
-                 float fuzz) {
+                 float t1, MaterialType mtype, float fuzz,
+                 TextureType ttype, Color c) {
     size++;
     types.push_back(htype);
     center.push_back(centr1.e);
     center2.push_back(centr2.e);
     radius.push_back(rad);
     times.push_back({{t0, t1}});
-    mat_ptr->addMaterial(mtype, c.e, fuzz);
+    mat_ptr->addMaterial(mtype, fuzz, ttype, c);
   }
-  void addObject(Sphere s, MaterialType mtype, Color c,
-                 float fuzz) {
+  void addObject(Sphere s, MaterialType mtype, float fuzz,
+                 TextureType ttype, Color c) {
     addObject(SPHERE, s.center, Vec3(0.0f), s.radius, 0, 0,
-              mtype, c, fuzz);
+              mtype, fuzz, ttype, c);
   }
-  void addObject(Sphere s, MaterialType mtype, Color c,
-                 float fuzz, const int index) {
+  void addObject(Sphere s, MaterialType mtype, float fuzz,
+                 TextureType ttype, Color c,
+                 const int index) {
     addObject(SPHERE, s.center, Vec3(0.0f), s.radius, 0, 0,
-              mtype, c, fuzz, index);
+              mtype, fuzz, ttype, c, index);
   }
   void addObject(MovingSphere s, MaterialType mtype,
-                 Color c, float fuzz) {
+                 float fuzz, TextureType ttype, Color c) {
     addObject(MOVING_SPHERE, s.center1, s.center2, s.radius,
-              s.time0, s.time1, mtype, c, fuzz);
+              s.time0, s.time1, mtype, fuzz, ttype, c);
   }
   void addObject(MovingSphere s, MaterialType mtype,
-                 Color c, float fuzz, const int index) {
+                 float fuzz, TextureType ttype, Color c,
+                 const int index) {
     addObject(MOVING_SPHERE, s.center1, s.center2, s.radius,
-              s.time0, s.time1, mtype, c, fuzz, index);
+              s.time0, s.time1, mtype, fuzz, ttype, c,
+              index);
   }
-
   void to_buffer(cl::Context &context,
                  cl::CommandQueue &queue) {
     std::cout << "hittable size: " << size << std::endl;

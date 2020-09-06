@@ -1,5 +1,6 @@
 #ifndef KUTILS_H
 #define KUTILS_H
+#include "constants.h"
 #include "macros.h"
 
 // map function

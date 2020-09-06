@@ -21,32 +21,22 @@ typedef struct SceneHittable {
   Material mat;
 } SceneHittable;
 
-SceneHittable makeSphereHittable(Point3 c, float r,
-                                 Texture material_color,
-                                 float material_fuzz,
-                                 int material_type) {
+SceneHittable makeSphereHittable(Point3 c, float r) {
   SceneHittable sh;
   sh.h_type = SPHERE;
   sh.sph = makeSphere(r, c);
-  sh.mat = makeMaterial(material_type, material_color,
-                        material_fuzz);
 
   return sh;
 }
-SceneHittable
-makeMovingSphereHittable(Point3 c1,
-                         Point3 c2, //
-                         float r,   //
-                         float t0,  //
-                         float t1,  //
-                         Texture material_color,
-                         float material_fuzz,
-                         int material_type) {
+SceneHittable makeMovingSphereHittable(Point3 c1,
+                                       Point3 c2, //
+                                       float r,   //
+                                       float t0,  //
+                                       float t1   //
+                                       ) {
   SceneHittable sh;
   sh.h_type = MOVING_SPHERE;
   sh.msph = makeMovingSphere(r, c1, c2, t0, t1);
-  sh.mat = makeMaterial(material_type, material_color,
-                        material_fuzz);
 
   return sh;
 }
@@ -56,13 +46,30 @@ SceneHittable makeSHittable(int hittable_type, Point3 c1,
                             Texture material_color,
                             float material_fuzz,
                             int material_type) {
+  SceneHittable s;
   if (hittable_type == MOVING_SPHERE) {
-    return makeMovingSphereHittable(
-        c1, c2, r, t0, t1, material_color, material_fuzz,
-        material_type);
+    s = makeMovingSphereHittable(c1, c2, r, t0, t1);
   } else {
-    return makeSphereHittable(c1, r, material_color,
-                              material_fuzz, material_type);
+    s = makeSphereHittable(c1, r);
+  }
+  s.mat = makeMaterial(material_type, material_color,
+                       material_fuzz);
+  return s;
+}
+
+SceneHittable makeJustHittable(
+    // ---------------- Hittables --------------
+    int hittable_type, // hittable type
+    Point3 c1,         // center1
+    Point3 c2,         // center2
+    float r,           // radius
+    float t0,          // time0
+    float t1           // time1
+    ) {
+  if (hittable_type == MOVING_SPHERE) {
+    return makeMovingSphereHittable(c1, c2, r, t0, t1);
+  } else {
+    return makeSphereHittable(c1, r);
   }
 }
 
@@ -78,77 +85,67 @@ bool bounding_box_shittable(SceneHittable h, float tmin,
 
 bool hit(SceneHittable h, const Ray *r, float t_min,
          float t_max, HitRecord *rec) {
-  bool isHit = false;
-  if (h.h_type == SPHERE) {
-    isHit = hit_sphere(&h.sph, r, t_min, t_max, rec);
+  if (h.h_type == MOVING_SPHERE) {
+    return hit_moving_sphere(&h.msph, r, t_min, t_max, rec);
   } else {
-    isHit =
-        hit_moving_sphere(&h.msph, r, t_min, t_max, rec);
+    return hit_sphere(&h.sph, r, t_min, t_max, rec);
   }
-  if (isHit) {
-    rec->mat_ptr = h.mat;
-  }
-  return isHit;
+  return false;
 }
 
-bool hit_scene(__constant int *htypes,
-               __constant Vec3 *centers,
-               __constant Vec3 *centers2,
-               __constant float *radiuss,
-               __constant float2 *times,
-               __constant Vec3 *material_colors,
-               __constant float *material_fuzzs,
-               __constant int *material_types, const Ray *r,
-               float t_min, float t_max, int sphere_count,
-               HitRecord *rec) {
+bool hit_scene(
+    // -------------- Hittables ---------------
+    __constant int *htypes,      //
+    __constant Point3 *centers,  //
+    __constant Point3 *centers2, //
+    __constant float *radiuss,   //
+    __constant float2 *times,    //
+    // ------------- Materials ----------------
+    __constant int *material_types,
+    __constant float *material_fuzzs,
+    // ------------- Textures -----------------
+    __constant int *texture_types,
+    __constant Color *texture_colors,
+    const Ray *r, //
+    float t_min, float t_max, int sphere_count,
+    HitRecord *rec) {
   HitRecord temp;
   bool anyHit = false;
   float closest = t_max;
   for (int i = 0; i < sphere_count; i++) {
-    Texture material_color;
-    TextureTypes ttype;
-    ttype = i % 2 == 1 ? SOLID_COLOR : DOUBLE_COLOR;
-    material_color =
-        makeTexture(ttype, material_colors[i], v3(-5.0f));
-    SceneHittable h = makeSHittable(
+    SceneHittable h = makeJustHittable(
         htypes[i], centers[i], centers2[i], radiuss[i],
-        times[i].x, times[i].y, material_color,
-        material_fuzzs[i], material_types[i]);
+        times[i].x, times[i].y);
     if (hit(h, r, t_min, closest, &temp)) {
       anyHit = true;
       closest = temp.t;
+      Texture t = makeTexture(texture_types[i],
+                              texture_colors[i], v3(-1.0f));
+      temp.mat_ptr = makeMaterial(material_types[i], t,
+                                  material_fuzzs[i]);
       *rec = temp;
     }
   }
   return anyHit;
 }
 
-bool bounding_box_scene(__constant int *htypes,
-                        __constant Vec3 *centers,
-                        __constant Vec3 *centers2,
-                        __constant float *radiuss,
-                        __constant float2 *times,
-                        __constant Vec3 *material_colors,
-                        __constant float *material_fuzzs,
-                        __constant int *material_types,
-                        float t_min, float t_max,
-                        int sphere_count, Aabb *outbox) {
+bool bounding_box_scene(
+    // ---------- hittables -------------------
+    __constant int *htypes, __constant Point3 *centers,
+    __constant Point3 *centers2, __constant float *radiuss,
+    __constant float2 *times,
+    //
+    float t_min, float t_max, int sphere_count,
+    Aabb *outbox) {
   if (sphere_count == 0)
     return false;
 
   Aabb temp;
   bool first_box = true;
   for (int i = 0; i < sphere_count; i++) {
-    Texture material_color;
-    TextureTypes ttype;
-    ttype = i % 2 == 1 ? SOLID_COLOR : DOUBLE_COLOR;
-    material_color =
-        makeTexture(ttype, material_colors[i], v3(-5.0f));
-
-    SceneHittable s = makeSHittable(
+    SceneHittable s = makeJustHittable(
         htypes[i], centers[i], centers2[i], radiuss[i],
-        times[i].x, times[i].y, material_color,
-        material_fuzzs[i], material_types[i]);
+        times[i].x, times[i].y);
     if (!bounding_box_shittable(s, t_min, t_max, &temp)) {
       return false;
     }
