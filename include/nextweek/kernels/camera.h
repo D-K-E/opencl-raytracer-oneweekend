@@ -1,7 +1,6 @@
 #ifndef CAMERA_H
 #define CAMERA_H
-#include "kutils.h"
-#include "macros.h"
+
 #include "ray.h"
 // -------------------- Camera ---------------------
 

@@ -1,6 +1,8 @@
 #ifndef MACROS_H
 #define MACROS_H
 
+#include "constants.h"
+
 #define Vec3 float3
 #define Point3 float3
 #define Color float3

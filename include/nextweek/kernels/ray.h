@@ -1,12 +1,11 @@
 #ifndef RAY_H
 #define RAY_H
 
-#include "macros.h"
-// ------------------------ Ray ------------------
+#include "kutils.h"
 
 typedef struct Ray {
-  float3 origin;
-  float3 direction;
+  Point3 origin;
+  Vec3 direction;
   float time;
 } Ray;
 
@@ -22,5 +21,4 @@ Point3 at(Ray r, float dist) {
   return r.origin + r.direction * dist;
 }
 
-// -------------------- end Ray --------------------
 #endif

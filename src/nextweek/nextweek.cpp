@@ -3,14 +3,16 @@
 #include <nextweek/color.hpp>
 #include <nextweek/external.hpp>
 #include <nextweek/hittable.hpp>
+#include <nextweek/image.hpp>
 #include <nextweek/material.hpp>
 #include <nextweek/random.hpp>
 #include <nextweek/sphere.hpp>
 #include <nextweek/texture.hpp>
 #include <nextweek/utils.hpp>
 
-void make_scene(SceneHittables &sh, cl::Context &context,
-                cl::CommandQueue &queue) {
+void make_scene_oneweekend(SceneHittables &sh,
+                           cl::Context &context,
+                           cl::CommandQueue &queue) {
   // ground material
   sh.addObject(Sphere(1000.0f, Vec3(0, -1000.0f, 0)),
                LAMBERTIAN, 0.0f, DOUBLE_COLOR, Vec3(0.2f));
@@ -65,6 +67,17 @@ void make_scene(SceneHittables &sh, cl::Context &context,
   sh.to_buffer(context, queue);
 }
 
+void make_scene(SceneHittables &sh, Image &img,
+                cl::Context &context,
+                cl::CommandQueue &queue) {
+  // ground material
+  img.to_buffer(context, queue);
+  Vec3 img_index(0.0f, -1.0f, -1.0f);
+  Sphere s(2.0f, Vec3(0.0f));
+  sh.addObject(s, LAMBERTIAN, 0.0f, IMAGE_COLOR, img_index);
+  sh.to_buffer(context, queue);
+}
+
 Camera make_camera(float aspect_ratio) {
   Point3 orig(13.0f, 2.0f, 3.0f);
   Point3 target(0.0f);
@@ -93,62 +106,66 @@ void make_sample_per_pixel_random(
 void set_kernel_args(cl::Kernel &kernel, int &arg_count,
                      SceneMaterial *sm) {
   arg_count++;
-  kernel.setArg(arg_count, sm->cl_mat_type);
+  check_error(kernel.setArg(arg_count, sm->cl_mat_type));
   arg_count++;
-  kernel.setArg(arg_count, sm->cl_fuzz);
+  check_error(kernel.setArg(arg_count, sm->cl_fuzz));
 }
 void set_kernel_args(cl::Kernel &kernel, int &arg_count,
                      Texture *t_ptr) {
   arg_count++;
-  kernel.setArg(arg_count, t_ptr->cl_texture_type);
+  check_error(
+      kernel.setArg(arg_count, t_ptr->cl_texture_type));
   arg_count++;
-  kernel.setArg(arg_count, t_ptr->cl_color);
+  check_error(kernel.setArg(arg_count, t_ptr->cl_color));
 }
 void set_kernel_args(cl::Kernel &kernel, int &arg_count,
                      SceneHittables &sh) {
   arg_count++;
-  kernel.setArg(arg_count, sh.cl_hittable_type);
+  check_error(
+      kernel.setArg(arg_count, sh.cl_hittable_type));
   arg_count++;
-  kernel.setArg(arg_count, sh.cl_center);
+  check_error(kernel.setArg(arg_count, sh.cl_center));
   arg_count++;
-  kernel.setArg(arg_count, sh.cl_center2);
+  check_error(kernel.setArg(arg_count, sh.cl_center2));
   arg_count++;
-  kernel.setArg(arg_count, sh.cl_times);
+  check_error(kernel.setArg(arg_count, sh.cl_times));
   arg_count++;
-  kernel.setArg(arg_count, sh.cl_radius);
+  check_error(kernel.setArg(arg_count, sh.cl_radius));
   arg_count++;
-  kernel.setArg(arg_count, sh.size);
+  check_error(kernel.setArg(arg_count, sh.size));
 }
 
 void set_kernel_args(
     cl::Kernel &kernel, int &arg_count,
     SceneRandom<cl_float3> &sample_random) {
   arg_count++;
-  kernel.setArg(arg_count, sample_random.cl_rand_vals);
+  check_error(
+      kernel.setArg(arg_count, sample_random.cl_rand_vals));
 }
 
 void set_kernel_args(cl::Kernel &kernel, int &arg_count,
                      Camera &cam) {
   arg_count++;
-  kernel.setArg(arg_count, cam.origin);
+  check_error(kernel.setArg(arg_count, cam.origin));
   arg_count++;
-  kernel.setArg(arg_count, cam.lower_left_corner);
+  check_error(
+      kernel.setArg(arg_count, cam.lower_left_corner));
   arg_count++;
-  kernel.setArg(arg_count, cam.horizontal);
+  check_error(kernel.setArg(arg_count, cam.horizontal));
   arg_count++;
-  kernel.setArg(arg_count, cam.vertical);
+  check_error(kernel.setArg(arg_count, cam.vertical));
   arg_count++;
-  kernel.setArg(arg_count, cam.w);
+  check_error(kernel.setArg(arg_count, cam.w));
   arg_count++;
-  kernel.setArg(arg_count, cam.u);
+  check_error(kernel.setArg(arg_count, cam.u));
   arg_count++;
-  kernel.setArg(arg_count, cam.v);
+  check_error(kernel.setArg(arg_count, cam.v));
   arg_count++;
-  kernel.setArg(arg_count, cam.lens_radius);
+  check_error(kernel.setArg(arg_count, cam.lens_radius));
   arg_count++;
-  kernel.setArg(arg_count, cam.time0);
+  check_error(kernel.setArg(arg_count, cam.time0));
   arg_count++;
-  kernel.setArg(arg_count, cam.time1);
+  check_error(kernel.setArg(arg_count, cam.time1));
 }
 
 void set_kernel_args(cl::Kernel &kernel, int &arg_count,
@@ -157,15 +174,32 @@ void set_kernel_args(cl::Kernel &kernel, int &arg_count,
                      int samples_per_pixel,
                      float aspect_ratio) {
   arg_count++;
-  kernel.setArg(arg_count, depth);
+  check_error(kernel.setArg(arg_count, depth));
   arg_count++;
-  kernel.setArg(arg_count, image_width);
+  check_error(kernel.setArg(arg_count, image_width));
   arg_count++;
-  kernel.setArg(arg_count, image_height);
+  check_error(kernel.setArg(arg_count, image_height));
   arg_count++;
-  kernel.setArg(arg_count, samples_per_pixel);
+  check_error(kernel.setArg(arg_count, samples_per_pixel));
   arg_count++;
-  kernel.setArg(arg_count, aspect_ratio);
+  check_error(kernel.setArg(arg_count, aspect_ratio));
+}
+
+void set_kernel_args(cl::Kernel &kernel, int &arg_count,
+                     Image &img) {
+  arg_count++;
+  check_error(kernel.setArg(arg_count, img.cl_img));
+  arg_count++;
+  check_error(kernel.setArg(arg_count, img.bytes_per_line));
+  arg_count++;
+  check_error(
+      kernel.setArg(arg_count, img.bytes_per_pixel));
+  arg_count++;
+  check_error(kernel.setArg(arg_count, img.image_width));
+  arg_count++;
+  check_error(kernel.setArg(arg_count, img.image_height));
+  arg_count++;
+  check_error(kernel.setArg(arg_count, img.nb_images));
 }
 
 void set_kernel_arguments(
@@ -174,9 +208,9 @@ void set_kernel_arguments(
     SceneRandom<cl_float3> &sample_random,
     const int image_width, const int image_height,
     const int samples_per_pixel, const float aspect_ratio,
-    Camera &cam) {
+    Camera &cam, Image &img) {
   int arg_count = 0;
-  kernel.setArg(arg_count, cl_output);
+  check_error(kernel.setArg(arg_count, cl_output));
   //
   set_kernel_args(kernel, arg_count, sh);
   //
@@ -189,6 +223,7 @@ void set_kernel_arguments(
   set_kernel_args(kernel, arg_count, depth, image_width,
                   image_height, samples_per_pixel,
                   aspect_ratio);
+  set_kernel_args(kernel, arg_count, img);
 }
 
 int main() {
@@ -231,7 +266,8 @@ int main() {
 
   // make spheres
   SceneHittables sh;
-  make_scene(sh, context, queue);
+  Image img("media/earthmap.png");
+  make_scene(sh, img, context, queue);
 
   // make camera
   Camera cam = make_camera(aspect_ratio);
@@ -247,7 +283,7 @@ int main() {
   set_kernel_arguments(kernel, cl_output, sh, depth,
                        sample_random, image_width,
                        image_height, samples_per_pixel,
-                       aspect_ratio, cam);
+                       aspect_ratio, cam, img);
 
   const int global_size = image_height * image_width;
   const int local_size = 10;

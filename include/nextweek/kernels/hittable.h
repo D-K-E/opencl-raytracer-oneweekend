@@ -1,13 +1,235 @@
 #ifndef HITTABLE_H
 #define HITTABLE_H
 
-#include "aabb.h"
-#include "hitrecord.h"
-#include "macros.h"
+// ------- most basic ----------
 #include "material.h"
-#include "ray.h"
-#include "sphere.h"
-#include "texture.h"
+
+// ----------------- Hittable.h ------------------
+
+// ----------------------- AABB ----------------------
+
+typedef struct Aabb {
+  Point3 min;
+  Point3 max;
+} Aabb;
+Aabb makeAabb(Point3 min, Point3 max) {
+  Aabb aabb;
+  aabb.min = min;
+  aabb.max = max;
+  return aabb;
+}
+
+void get_minmax_dir_orig(int index, float *min, float *max,
+                         float *orig, float *dir, Vec3 minv,
+                         Vec3 maxv, Vec3 origv, Vec3 dirv) {
+  if (index == 0) {
+    *min = minv.x;
+    *max = maxv.x;
+    *orig = origv.x;
+    *dir = dirv.x;
+  } else if (index == 1) {
+    *min = minv.y;
+    *max = maxv.y;
+    *orig = origv.y;
+    *dir = dirv.y;
+  } else {
+    *min = minv.z;
+    *max = maxv.z;
+    *orig = origv.z;
+    *dir = dirv.z;
+  }
+}
+
+bool hit_aabb(const Aabb *aabb, const Ray *r, float tmin,
+              float tmax) {
+  for (int a = 0; a < 3; a++) {
+    float min, max, orig, dir;
+    get_minmax_dir_orig(a, &min, &max, &orig, &dir,
+                        aabb->min, aabb->max, r->origin,
+                        r->direction);
+    float invd = 1.0f / dir;
+    float t0 =
+        fmin((min - orig) * invd, (max - orig) * invd);
+    float t1 =
+        fmax((min - orig) * invd, (max - orig) * invd);
+    if (invd < 0.0f) {
+      float t = t1;
+      t1 = t0;
+      t0 = t;
+    }
+    tmin = t0 > tmin ? t0 : tmin;
+    tmax = t1 > tmax ? t1 : tmax;
+    if (tmax <= tmin) {
+      return false;
+    }
+  }
+  return true;
+}
+Aabb surrounding_box(Aabb box0, Aabb box1) {
+  Point3 small = vec3(fmin(box0.min.x, box1.min.x),
+                      fmin(box0.min.y, box1.min.y),
+                      fmin(box0.min.z, box1.min.z));
+  Point3 big = vec3(fmax(box0.max.x, box1.max.x),
+                    fmax(box0.max.y, box1.max.y),
+                    fmax(box0.max.z, box1.max.z));
+  return makeAabb(small, big);
+}
+
+// ---------------- end AABB --------------------
+// ---------------- Sphere ----------------------
+
+void get_sphere_uv(const Vec3 p, float *u, float *v) {
+  float phi = atan2(p.z, p.x);
+  float theta = asin(p.y);
+  *u = 1.0f - (phi + PI) / (2.0f * PI);
+  *v = (theta + PI / 2.0f) / PI;
+}
+
+typedef struct Sphere {
+  float radius;
+  Point3 center;
+} Sphere;
+
+Sphere makeSphere(float r, Point3 c) {
+  Sphere s;
+  s.radius = r;
+  s.center = c;
+  return s;
+}
+
+bool hit_sphere(const Sphere *s, const Ray *r, float t_min,
+                float t_max, HitRecord *rec) {
+  float3 oc = r->origin - s->center;
+  float a = dot(r->direction, r->direction);
+  float hb = dot(oc, r->direction);
+  float b = 2.0f * hb;
+  float c = dot(oc, oc) - (s->radius * s->radius);
+  float disc = (hb * hb) - (a * c);
+
+  if (disc > 0.0f) {
+    float root = sqrt(disc);
+
+    float margin = (-hb - root) / a;
+    if (margin < t_max && margin > t_min) {
+      rec->t = margin;
+      rec->p = at(*r, rec->t);
+      Vec3 normal = (rec->p - s->center) / s->radius;
+      set_front_face(rec, r, &normal);
+      float u, v;
+      get_sphere_uv((rec->p - s->center), &u, &v);
+      rec->u = u;
+      rec->v = v;
+      return true;
+    }
+
+    margin = (-hb + root) / a;
+    if (margin < t_max && margin > t_min) {
+      rec->t = margin;
+      rec->p = at(*r, rec->t);
+      float3 normal = (rec->p - s->center) / s->radius;
+      set_front_face(rec, r, &normal);
+      float u, v;
+      get_sphere_uv((rec->p - s->center), &u, &v);
+      rec->u = u;
+      rec->v = v;
+      return true;
+    }
+  }
+  return false;
+}
+
+typedef struct MovingSphere {
+  float radius;
+  Point3 center1;
+  Point3 center2;
+  float time0;
+  float time1;
+} MovingSphere;
+
+bool bounding_box_sphere(const Sphere *s, float tmin,
+                         float tmax, Aabb *aabb) {
+  *aabb = makeAabb(s->center - v3(s->radius),
+                   s->center + v3(s->radius));
+  return true;
+}
+
+MovingSphere makeMovingSphere(float r, Point3 c1, Point3 c2,
+                              float t0, float t1) {
+  MovingSphere s;
+  s.radius = r;
+  s.center1 = c1;
+  s.center2 = c2;
+  s.time0 = t0;
+  s.time1 = t1;
+  return s;
+}
+
+Point3 get_center_ms(const MovingSphere *s, float time) {
+  Vec3 center =
+      ((time - s->time0) / (s->time1 - s->time0)) *
+      (s->center2 - s->center1);
+  return s->center1 + center;
+}
+
+bool hit_moving_sphere(const MovingSphere *s, const Ray *r,
+                       float t_min, float t_max,
+                       HitRecord *rec) {
+  Vec3 center = get_center_ms(s, r->time);
+  float3 oc = r->origin - center;
+  float a = dot(r->direction, r->direction);
+  float hb = dot(oc, r->direction);
+  float b = 2.0f * hb;
+  float c = dot(oc, oc) - (s->radius * s->radius);
+  float disc = (hb * hb) - (a * c);
+
+  if (disc > 0.0f) {
+    float root = sqrt(disc);
+
+    float margin = (-hb - root) / a;
+    if (margin < t_max && margin > t_min) {
+      rec->t = margin;
+      rec->p = at(*r, rec->t);
+      Vec3 normal = (rec->p - center) / s->radius;
+      set_front_face(rec, r, &normal);
+      float u, v;
+      get_sphere_uv((rec->p - center), &u, &v);
+      rec->u = u;
+      rec->v = v;
+
+      return true;
+    }
+
+    margin = (-hb + root) / a;
+    if (margin < t_max && margin > t_min) {
+      rec->t = margin;
+      rec->p = at(*r, rec->t);
+      float3 normal = (rec->p - center) / s->radius;
+      set_front_face(rec, r, &normal);
+      float u, v;
+      get_sphere_uv((rec->p - center), &u, &v);
+      rec->u = u;
+      rec->v = v;
+
+      return true;
+    }
+  }
+  return false;
+}
+
+bool bounding_box_moving_sphere(const MovingSphere *s,
+                                float tmin, float tmax,
+                                Aabb *aabb) {
+  Point3 c1 = get_center_ms(s, tmin);
+  Point3 c2 = get_center_ms(s, tmax);
+  Aabb aabb1 =
+      makeAabb(c1 - v3(s->radius), c1 + v3(s->radius));
+  Aabb aabb2 =
+      makeAabb(c2 - v3(s->radius), c2 + v3(s->radius));
+  *aabb = surrounding_box(aabb1, aabb2);
+  return true;
+}
+
+// ----------------- end Sphere -------------------
 
 typedef enum HittableType {
   SPHERE = 1,
@@ -106,6 +328,9 @@ bool hit_scene(
     // ------------- Textures -----------------
     __constant int *texture_types,
     __constant Color *texture_colors,
+    // ------------- images -------------------
+    ImageInfo info, __constant float *images,
+    //
     const Ray *r, //
     float t_min, float t_max, int sphere_count,
     HitRecord *rec) {
@@ -120,7 +345,7 @@ bool hit_scene(
       anyHit = true;
       closest = temp.t;
       Texture t = makeTexture(texture_types[i],
-                              texture_colors[i], v3(-1.0f));
+                              texture_colors[i], info);
       temp.mat_ptr = makeMaterial(material_types[i], t,
                                   material_fuzzs[i]);
       *rec = temp;
@@ -155,5 +380,7 @@ bool bounding_box_scene(
   }
   return true;
 }
+
+// ----------------- end Hittable.h --------------
 
 #endif

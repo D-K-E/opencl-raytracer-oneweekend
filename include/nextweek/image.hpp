@@ -1,56 +1,78 @@
 #ifndef IMAGE_HPP
 #define IMAGE_HPP
+#include "nextweek/utils.hpp"
 #include <nextweek/external.hpp>
 
 class Image {
 public:
-  std::vector<float *> image_data;
-  std::size_t bytes_per_line;
-  std::size_t image_width;
-  std::size_t image_height;
-  std::size_t bytes_per_pixel;
-  cl::Image2DArray imarr;
+  std::vector<cl_float> image_data;
+  int bytes_per_line;
+  int image_width;
+  int image_height;
+  int bytes_per_pixel;
+  int nb_images;
+  cl::Buffer cl_img;
 
 public:
   Image() {}
   Image(const char *impath) {
     int width, height, nrComponents;
 
-    float *data = stbi_loadf(impath, &width, &height,
-                             &nrComponents, 0);
-    image_data.push_back(data);
+    unsigned char *data = stbi_load(impath, &width, &height,
+                                    &nrComponents, 0);
+    image_data = imload(data, width, height, nrComponents);
+    nb_images = 1;
+    set_im_values(width, height, nrComponents);
   }
   Image(std::vector<std::string> impaths) {
     int width, height, nrComponents;
-    for (const std::string &path : impaths) {
-      float *data = stbi_loadf(impath, &width, &height,
-                               &nrComponents, 0);
-      image_data.push_back(data);
+    nb_images = impaths.size();
+    std::vector<cl_float> imc;
+    for (const std::string &impath : impaths) {
+      unsigned char *data =
+          stbi_load(impath.c_str(), &width, &height,
+                    &nrComponents, 0);
+      imload(data, width, height, nrComponents, imc);
     }
-    image_width = static_cast<std::size_t>(width);
-    image_height = static_cast<std::size_t>(height);
-    bytes_per_pixel =
-        static_cast<std::size_t>(nrComponents);
-
-    bytes_per_pixel =
-        static_cast<std::size_t>(nrComponents);
-    bytes_per_line = static_cast<std::size_t>( //
-        nrComponents * image_width             //
-        );
+    set_im_values(width, height, nrComponents);
   }
-  void to_arr(cl::Context &context) {
+  std::vector<cl_float> imload(unsigned char *data,
+                               int width, int height,
+                               int nbComponents) {
+    std::vector<cl_float> imc(width * height *
+                              nbComponents);
+    for (int i = 0; i < width * height * nbComponents;
+         i++) {
+      imc[i] = static_cast<cl_float>(data[i]) / 255.0f;
+    }
+    return imc;
+  }
+
+  std::vector<cl_float> imload(unsigned char *data,
+                               int width, int height,
+                               int nbComponents,
+                               std::vector<cl_float> &imc) {
+    for (int i = 0; i < width * height * nbComponents;
+         i++) {
+      imc.push_back(static_cast<cl_float>(data[i]) /
+                    255.0f);
+    }
+    return imc;
+  }
+  void set_im_values(int width, int height, int per_pixel) {
+    image_width = width;
+    image_height = height;
+    bytes_per_pixel = per_pixel;
+    bytes_per_line = per_pixel * width;
+  }
+  void to_buffer(cl::Context &context,
+                 cl::CommandQueue &queue) {
     //
     std::size_t arr_size = image_data.size();
-    cl::ImageFormat format(CL_RGBA, CL_FLOAT);
-    int err;
-    imarr = cl::Image2DArray(
-        context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
-        format, arr_size, image_width, image_height,
-        bytes_per_line, bytes_per_pixel, image_data.data(),
-        &err);
-    if (err != 0) {
-      std::cout << "OpenCL Error :: " << err << std::endl;
-    }
+    int flag = bytes_per_pixel == 3 ? CL_RGB : CL_RGBA;
+    cl::ImageFormat format(flag, CL_UNSIGNED_INT8);
+    make_buffer<cl_float>(cl_img, context, queue, arr_size,
+                          image_data.data());
   }
 };
 

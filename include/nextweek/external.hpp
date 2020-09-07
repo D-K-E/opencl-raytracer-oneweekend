@@ -3,6 +3,7 @@
 
 #include <CL/cl.hpp>
 #include <cmath>
+#include <exception>
 #include <fstream>
 #include <iostream>
 #include <random>

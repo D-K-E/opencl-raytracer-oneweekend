@@ -1,16 +1,9 @@
 // oneweekend kernel
-#include "camera.h"
-#include "constants.h"
+// ------------------- most basics ---------------
 #include "hittable.h"
-#include "kutils.h"
-#include "macros.h"
-#include "material.h"
-#include "ray.h"
-#include "scattering.h"
-#include "texture.h"
-
 // utilities function
 
+//
 // -------------------- Sphere --------------------
 Color trace(Ray *r,
             // ---------- hittables -------------------
@@ -30,7 +23,9 @@ Color trace(Ray *r,
             //
             int start_index,  // ray start index for seeds
             int sphere_count, //
-            int depth) {
+            int depth,
+            // ---------- images ---------------------
+            ImageInfo info, __constant float *images) {
   int end_index = start_index + depth;
   Ray r_in = *r;
   Color accumulated = v3(1.0f);
@@ -49,13 +44,17 @@ Color trace(Ray *r,
             // ----------- textures --------------
             texture_types,  //
             texture_colors, //
+            // ----------- images ----------------
+            info, images,
+            //
             &r_in, EPS_TMIN, INF, sphere_count, &rec)) {
       Color attenuation;
       Ray r_out;
       float3 seed = seeds[i];
 
       if (scatter_material(rec.mat_ptr, r_in, rec,
-                           &attenuation, &r_out, seed)) {
+                           &attenuation, &r_out, seed,
+                           images)) {
         r_in = r_out;
         accumulated *= attenuation;
       } else {
@@ -110,10 +109,18 @@ ray_color(__global Color *out,
           int imwidth,           //
           int imheight,          //
           int samples_per_pixel, //
-          float aspect_ratio) {
+          float aspect_ratio,    //
+          // -------- image -----------------------
+          __constant float *imarr, int bytes_per_line,
+          int bytes_per_pixel, int imarr_width,
+          int imarr_height, int nb_images) {
   const int gid = get_global_id(0);
   int xc = gid % imwidth;
   int yc = gid / imwidth;
+
+  ImageInfo info = makeImageInfo(
+      imarr_width, imarr_height, bytes_per_line,
+      bytes_per_pixel, nb_images);
 
   // take random value from random array
   const int spp = samples_per_pixel;
@@ -147,7 +154,9 @@ ray_color(__global Color *out,
               seeds,
               // --------- others -----------------------
               depth_start_index, // depth count
-              sphere_count, depth);
+              sphere_count, depth,
+              // --------- images -----------------------
+              info, imarr);
   }
 
   out[gid] = sqrt(rcolor / samples_per_pixel);
